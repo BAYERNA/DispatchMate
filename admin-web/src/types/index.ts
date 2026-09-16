@@ -141,6 +141,7 @@ export interface LiveDangerSnapshot {
   growthRatio: number | null
   spreadDirection: string | null
   spreadSpeedPxPerSec: number | null
+  snapshotBase64: string | null
 }
 
 export interface ApiErrorBody {

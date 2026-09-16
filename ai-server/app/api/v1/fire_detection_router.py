@@ -43,6 +43,7 @@ def _result_kwargs(result: dict) -> dict:
         "growth_ratio": result.get("growth_ratio"),
         "spread_direction": result.get("spread_direction"),
         "spread_speed_px_per_sec": result.get("spread_speed_px_per_sec"),
+        "snapshot_base64": result.get("snapshot_base64"),
     }
 
 
