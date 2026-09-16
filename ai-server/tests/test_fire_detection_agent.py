@@ -2,13 +2,17 @@
 None으로 남는지 검증한다 — 박스 없는 프레임을 스냅샷으로 남기면 "박스 없음=안전"이라는
 잘못된 신호를 줄 수 있어서(모듈 주석 참조), 이 경계가 실제로 지켜지는지가 핵심이다."""
 
+import sys
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 
-from app.agents.fire_detection_agent import FireDetectionAgent
-from app.services.yolo_service import DetectionResult
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from app.agents.fire_detection_agent import FireDetectionAgent  # noqa: E402
+from app.services.yolo_service import DetectionResult  # noqa: E402
 
 
 def _agent_with_mocked_yolo(detection_result: DetectionResult) -> FireDetectionAgent:

@@ -3,11 +3,15 @@ base64로 돌려주는지 검증한다 — DB에 텍스트로 저장해서 프�
 "그럴듯한 문자열"이 아니라 진짜 이미지인지가 중요하다."""
 
 import base64
+import sys
+from pathlib import Path
 
 import cv2
 import numpy as np
 
-from app.services.opencv_processor import encode_image_to_base64
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from app.services.opencv_processor import encode_image_to_base64  # noqa: E402
 
 
 def test_인코딩된_문자열은_실제로_디코드_가능한_JPEG다():
