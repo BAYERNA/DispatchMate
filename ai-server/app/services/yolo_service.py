@@ -233,7 +233,7 @@ class YoloService:
                     continue
                 x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].tolist()]
                 class_name = str(self._model.names.get(class_id, class_id))
-                color = (0, 0, 255) if class_name == "fire" else (0, 0, 0)  # BGR: fire=빨강, smoke=검정
+                color = (0, 0, 255) if class_name == "fire" else (128, 128, 128)  # BGR: fire=빨강, smoke=회색
                 cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
                 label = f"{class_name} {confidence:.2f}"
                 cv2.putText(annotated, label, (x1, max(0, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
