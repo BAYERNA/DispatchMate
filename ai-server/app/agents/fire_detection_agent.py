@@ -90,4 +90,13 @@ class FireDetectionAgent(BaseAgent):
         state["growth_ratio"] = result.growth_ratio
         state["spread_direction"] = result.spread_direction
         state["spread_speed_px_per_sec"] = result.spread_speed_px_per_sec
+
+        # ADM-001 "AI 의심감지 대기열" 증거 스냅샷 — 감지 순간의 프레임을 박스와 함께 남겨서,
+        # 관제실이 신뢰도 숫자만 보고 확인/오탐을 결정하지 않아도 되게 한다. 감지 안 됐을 땐
+        # (박스가 없어서) 스트림 화면과 똑같이 "박스 없음=안전"으로 오인될 수 있어 남기지 않는다.
+        if result.detected:
+            annotated = self.yolo_service.detect_and_annotate(frames[-1])
+            state["snapshot_base64"] = opencv_processor.encode_image_to_base64(annotated)
+        else:
+            state["snapshot_base64"] = None
         return state

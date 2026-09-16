@@ -72,6 +72,7 @@ export function AdminHomePage() {
             <table className="wf-table">
               <thead>
                 <tr>
+                  <th>스냅샷</th>
                   <th>감지시각</th>
                   <th>위치</th>
                   <th>신뢰도</th>
@@ -82,6 +83,17 @@ export function AdminHomePage() {
               <tbody>
                 {queueQuery.data.map((item) => (
                   <tr key={item.incidentId}>
+                    <td>
+                      {item.snapshotBase64 ? (
+                        <img
+                          src={`data:image/jpeg;base64,${item.snapshotBase64}`}
+                          alt="감지 스냅샷"
+                          style={{ width: 96, height: 54, objectFit: 'cover', border: '1px solid var(--color-line)' }}
+                        />
+                      ) : (
+                        <span className="alert-meta">스냅샷 없음</span>
+                      )}
+                    </td>
                     <td>{formatDateTime(item.detectedAt)}</td>
                     <td>{item.address ?? '—'}</td>
                     <td>{item.confidenceScore != null ? `${Math.round(item.confidenceScore)}%` : '—'}</td>

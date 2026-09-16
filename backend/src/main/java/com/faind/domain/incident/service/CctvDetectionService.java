@@ -55,7 +55,7 @@ public class CctvDetectionService {
 
     AiJudgmentLog log = new AiJudgmentLog(
         "CCTV_DETECTION", incident.getIncidentId(), null, request.cameraDeviceId(), request.confidenceScore(),
-        request.dangerScore(), detectionSource, request.summary());
+        request.dangerScore(), detectionSource, request.snapshotBase64(), request.summary());
     aiJudgmentLogRepository.save(log);
 
     return incident.getIncidentId();
@@ -78,6 +78,7 @@ public class CctvDetectionService {
         incident.getAddress(),
         incident.getReportedAt(),
         log.map(AiJudgmentLog::getConfidenceScore).orElse(null),
-        incident.getStatus().name());
+        incident.getStatus().name(),
+        log.map(AiJudgmentLog::getSnapshotBase64).orElse(null));
   }
 }

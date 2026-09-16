@@ -12,4 +12,6 @@ public record AiSuspectedQueueItemResponse(
     String address,
     LocalDateTime detectedAt,
     BigDecimal confidenceScore,
-    String status) {}
+    String status,
+    // 감지 박스가 그려진 증거 스냅샷(JPEG, base64) — 구버전 로그·수동감지 등은 null일 수 있다.
+    String snapshotBase64) {}
