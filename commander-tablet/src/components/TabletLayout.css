@@ -66,3 +66,14 @@
   max-width: 1280px;
   margin: 0 auto;
 }
+
+@media (max-width: 700px) {
+  .tablet-topbar {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+  }
+
+  .tablet-canvas {
+    padding: 16px;
+  }
+}

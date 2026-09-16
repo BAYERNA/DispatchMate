@@ -5,6 +5,13 @@
   align-items: start;
 }
 
+/* 태블릿 세로모드에서 2단 그리드가 답답해지는 걸 막는다 — CMD-002는 실제 태블릿 기기에서 쓰는 화면. */
+@media (max-width: 900px) {
+  .monitoring-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 .responder-row {
   display: flex;
   justify-content: space-between;
