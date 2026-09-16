@@ -209,6 +209,14 @@
   color: var(--color-ink-soft);
 }
 
+.tag.role-commander {
+  color: var(--color-role-commander);
+}
+
+.tag.role-responder {
+  color: var(--color-role-responder);
+}
+
 .tag.risk-danger {
   color: var(--color-alert);
   border-color: var(--color-alert);

@@ -98,7 +98,8 @@ services:
 
   admin-web:
     build:
-      context: ./admin-web
+      context: .
+      dockerfile: admin-web/Dockerfile
     container_name: faind-admin-web
     depends_on:
       backend:
@@ -108,7 +109,8 @@ services:
 
   commander-tablet:
     build:
-      context: ./commander-tablet
+      context: .
+      dockerfile: commander-tablet/Dockerfile
     container_name: faind-commander-tablet
     depends_on:
       backend:
@@ -120,7 +122,8 @@ services:
 
   responder-app:
     build:
-      context: ./responder-app
+      context: .
+      dockerfile: responder-app/Dockerfile
     container_name: faind-responder-app
     depends_on:
       backend:

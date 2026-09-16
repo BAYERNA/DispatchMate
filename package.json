@@ -1,0 +1,10 @@
+{
+  "name": "faind",
+  "private": true,
+  "workspaces": [
+    "admin-web",
+    "commander-tablet",
+    "responder-app",
+    "packages/*"
+  ]
+}
