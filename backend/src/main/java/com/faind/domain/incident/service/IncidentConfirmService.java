@@ -40,7 +40,7 @@ public class IncidentConfirmService {
   public IncidentResponse rejectAsFalsePositive(UUID incidentId, AuthenticatedUser currentUser) {
     requireAdmin(currentUser);
     Incident incident = findIncident(incidentId);
-    incident.rejectAsFalsePositive();
+    incident.rejectAsFalsePositive(currentUser.userId());
     return IncidentResponse.from(incident);
   }
 
