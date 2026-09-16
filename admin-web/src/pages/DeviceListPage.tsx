@@ -34,12 +34,14 @@ const DEVICE_STATUS_LABEL: Record<string, string> = {
 }
 
 const EMPTY_FORM: DeviceRegisterInput = { deviceType: 'BODYCAM', serialNo: '', connectionType: 'BLE' }
+const PAGE_SIZE = 50
 
 // ADM-006 기기·장비 매핑 관리 (FR-11, NFR-05, FR-24 CCTV·드론 자산등록)
 export function DeviceListPage() {
   const queryClient = useQueryClient()
   const [keyword, setKeyword] = useState('')
   const [deviceType, setDeviceType] = useState('ALL')
+  const [page, setPage] = useState(0)
   const [showRegisterForm, setShowRegisterForm] = useState(false)
   const [form, setForm] = useState<DeviceRegisterInput>(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
@@ -55,9 +57,21 @@ export function DeviceListPage() {
   const [streamUrlError, setStreamUrlError] = useState<string | null>(null)
 
   const devicesQuery = useQuery({
-    queryKey: ['devices', keyword, deviceType],
-    queryFn: () => listDevices({ keyword, deviceType, page: 0, size: 50 }),
+    queryKey: ['devices', keyword, deviceType, page],
+    queryFn: () => listDevices({ keyword, deviceType, page, size: PAGE_SIZE }),
   })
+
+  // 기기가 50대를 넘으면 뒤쪽 기기가 목록에서 아예 안 보이던 결함 — 검색/필터를 바꾸면
+  // 이전 페이지 번호가 그대로 남아 빈 결과처럼 보이는 걸 막기 위해 1페이지로 되돌린다.
+  function updateKeyword(value: string) {
+    setKeyword(value)
+    setPage(0)
+  }
+
+  function updateDeviceType(value: string) {
+    setDeviceType(value)
+    setPage(0)
+  }
   const respondersQuery = useQuery({
     queryKey: ['accounts', '', 'RESPONDER', 'for-mapping'],
     queryFn: () => listAccounts({ role: 'RESPONDER', page: 0, size: 200 }),
@@ -266,14 +280,14 @@ export function DeviceListPage() {
                 className="wf-field"
                 placeholder="기기ID·매핑대원 검색"
                 value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
+                onChange={(e) => updateKeyword(e.target.value)}
               />
             </div>
             <div style={{ width: 160 }}>
               <label className="field-label" htmlFor="deviceTypeFilter">
                 필터
               </label>
-              <select id="deviceTypeFilter" className="wf-field" value={deviceType} onChange={(e) => setDeviceType(e.target.value)}>
+              <select id="deviceTypeFilter" className="wf-field" value={deviceType} onChange={(e) => updateDeviceType(e.target.value)}>
                 <option value="ALL">전체 유형</option>
                 {Object.entries(DEVICE_TYPE_LABEL).map(([value, label]) => (
                   <option key={value} value={value}>
@@ -457,6 +471,30 @@ export function DeviceListPage() {
                 )}
               </tbody>
             </table>
+          )}
+
+          {devicesQuery.data && devicesQuery.data.totalElements > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+              <span className="alert-meta">
+                전체 {devicesQuery.data.totalElements}대 · {devicesQuery.data.number + 1} / {devicesQuery.data.totalPages} 페이지
+              </span>
+              <button
+                type="button"
+                className="wf-btn small"
+                disabled={devicesQuery.data.first}
+                onClick={() => setPage((p) => p - 1)}
+              >
+                이전
+              </button>
+              <button
+                type="button"
+                className="wf-btn small"
+                disabled={devicesQuery.data.last}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                다음
+              </button>
+            </div>
           )}
           {remapError && <Banner kind="error" message={remapError} />}
           {relocateError && <Banner kind="error" message={relocateError} />}
