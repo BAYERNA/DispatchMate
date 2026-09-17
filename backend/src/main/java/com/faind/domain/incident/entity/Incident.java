@@ -122,12 +122,15 @@ public class Incident {
   }
 
   // "오탐 처리" — 실제 출동 없이 종료하고 학습 데이터로만 흔적을 남긴다.
-  public void rejectAsFalsePositive() {
+  // confirmedBy를 반드시 채워야 한다 — chk_incidents_confirmed_by_gate가 AI_SUSPECTED를 벗어나는
+  // CCTV_AUTO_DETECTION 출동엔 confirmed_by를 요구한다(사람이 실제로 판단했다는 증거).
+  public void rejectAsFalsePositive(UUID rejectedByUserId) {
     if (status != IncidentStatus.AI_SUSPECTED) {
       throw new BusinessException(ErrorCode.INVALID_INCIDENT_STATE, "AI_SUSPECTED 상태에서만 오탐 처리할 수 있습니다.");
     }
     this.status = IncidentStatus.CLOSED;
     this.closedAt = LocalDateTime.now();
+    this.confirmedBy = rejectedByUserId;
   }
 
   public void markInProgress() {

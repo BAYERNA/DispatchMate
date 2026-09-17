@@ -98,7 +98,12 @@ services:
 
   admin-web:
     build:
-      context: ./admin-web
+      context: .
+      dockerfile: admin-web/Dockerfile
+    # package-lock.json이 x64 환경에서 생성돼 rolldown(vite)의 arm64-musl 네이티브 바인딩이
+    # lockfile에 없다 — Apple Silicon(arm64) 호스트에서 npm ci가 그 바이너리를 못 찾아 빌드가
+    # 깨지므로, x64-musl 바이너리는 lockfile에 있는 이 서비스를 amd64로 고정한다.
+    platform: linux/amd64
     container_name: faind-admin-web
     depends_on:
       backend:
@@ -108,7 +113,9 @@ services:
 
   commander-tablet:
     build:
-      context: ./commander-tablet
+      context: .
+      dockerfile: commander-tablet/Dockerfile
+    platform: linux/amd64
     container_name: faind-commander-tablet
     depends_on:
       backend:
@@ -120,7 +127,9 @@ services:
 
   responder-app:
     build:
-      context: ./responder-app
+      context: .
+      dockerfile: responder-app/Dockerfile
+    platform: linux/amd64
     container_name: faind-responder-app
     depends_on:
       backend:

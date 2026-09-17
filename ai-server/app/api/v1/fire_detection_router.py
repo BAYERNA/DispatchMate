@@ -43,6 +43,7 @@ def _result_kwargs(result: dict) -> dict:
         "growth_ratio": result.get("growth_ratio"),
         "spread_direction": result.get("spread_direction"),
         "spread_speed_px_per_sec": result.get("spread_speed_px_per_sec"),
+        "snapshot_base64": result.get("snapshot_base64"),
     }
 
 
@@ -79,6 +80,7 @@ async def analyze(
                 ),
                 address_hint=request.address_hint,
                 danger_score=kwargs["danger_score"],
+                snapshot_base64=result.get("snapshot_base64"),
             )
             return FireDetectionResult(callback_sent=True, incident_id=incident_id, **kwargs)
         except BackendClientError as e:

@@ -39,6 +39,7 @@ function CameraTile({ camera, danger, dangerError }: { camera: CameraResponse; d
         confidenceScore: (danger?.confidence ?? 0) * 100,
         dangerScore: danger?.dangerScore,
         summary: `관제실 수동 등록 (ADM-010, label=${danger?.label ?? '미상'}, danger=${danger?.dangerLevel}, score=${Math.round(danger?.dangerScore ?? 0)})`,
+        snapshotBase64: danger?.snapshotBase64 ?? null,
       }),
     onSuccess: (incidentId) => {
       setRegisterError(null)

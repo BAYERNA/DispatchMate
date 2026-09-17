@@ -1,0 +1,10 @@
+# 프론트엔드 3개(admin-web/commander-tablet/responder-app) Dockerfile이 packages/design-system을
+# 공유하려고 빌드 컨텍스트를 리포지토리 루트로 넓혔다 — 그 앞에서 무관한 서비스(특히 ai-server의
+# .venv, 수 GB)까지 컨텍스트에 딸려 들어가지 않도록 걸러낸다.
+.git
+backend
+ai-server
+notification-server
+**/node_modules
+**/dist
+**/.env

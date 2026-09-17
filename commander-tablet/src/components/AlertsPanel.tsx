@@ -88,7 +88,12 @@ export function AlertsPanel({ incidentId, assignments }: { incidentId: string; a
       <div className="wf-body">
         <form onSubmit={handleSubmit} style={{ marginBottom: 14 }}>
           <div className="form-row">
-            <select className="wf-field" value={targetUserId} onChange={(e) => setTargetUserId(e.target.value)}>
+            <select
+              className="wf-field"
+              aria-label="발송 대상"
+              value={targetUserId}
+              onChange={(e) => setTargetUserId(e.target.value)}
+            >
               <option value="">전체 대원 브로드캐스트</option>
               {assignments.map((a) => (
                 <option key={a.userId} value={a.userId}>
@@ -96,7 +101,12 @@ export function AlertsPanel({ incidentId, assignments }: { incidentId: string; a
                 </option>
               ))}
             </select>
-            <select className="wf-field" value={channel} onChange={(e) => setChannel(e.target.value as 'VOICE' | 'TEXT')}>
+            <select
+              className="wf-field"
+              aria-label="발송 채널"
+              value={channel}
+              onChange={(e) => setChannel(e.target.value as 'VOICE' | 'TEXT')}
+            >
               <option value="TEXT">문자</option>
               <option value="VOICE">음성</option>
             </select>
@@ -104,6 +114,7 @@ export function AlertsPanel({ incidentId, assignments }: { incidentId: string; a
           <div className="form-row">
             <input
               className="wf-field"
+              aria-label="위험정보 내용"
               placeholder="위험정보 내용 (예: 2층 붕괴 위험, 즉시 대피)"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
@@ -115,28 +126,31 @@ export function AlertsPanel({ incidentId, assignments }: { incidentId: string; a
           {feedback && <Banner kind={feedback.kind} message={feedback.text} />}
         </form>
 
-        {alertsQuery.isLoading && <div className="spinner-text">불러오는 중…</div>}
-        {alerts.length === 0 && !alertsQuery.isLoading && <div className="spinner-text">아직 알림이 없습니다.</div>}
-        {alerts.map((alert) => (
-          <div key={alert.alertId} className="alert-item">
-            <div>
-              <strong>{ALERT_TYPE_LABEL[alert.alertType ?? ''] ?? alert.alertType}</strong> {describeAlert(alert)}
+        {/* 실시간 알림 피드 — 새 알림이 도착하면 스크린 리더 사용자에게도 낭독되도록 aria-live로 감싼다. */}
+        <div aria-live="polite">
+          {alertsQuery.isLoading && <div className="spinner-text">불러오는 중…</div>}
+          {alerts.length === 0 && !alertsQuery.isLoading && <div className="spinner-text">아직 알림이 없습니다.</div>}
+          {alerts.map((alert) => (
+            <div key={alert.alertId} className="alert-item">
+              <div>
+                <strong>{ALERT_TYPE_LABEL[alert.alertType ?? ''] ?? alert.alertType}</strong> {describeAlert(alert)}
+              </div>
+              <div className="alert-meta">
+                {formatTime(alert.sentAt)} · {alert.sourceType}
+                <AckFreshness alertId={alert.alertId} />
+                {' · '}
+                <button
+                  type="button"
+                  className="wf-btn small"
+                  disabled={ackMutation.isPending}
+                  onClick={() => ackMutation.mutate(alert.alertId)}
+                >
+                  확인했어요
+                </button>
+              </div>
             </div>
-            <div className="alert-meta">
-              {formatTime(alert.sentAt)} · {alert.sourceType}
-              <AckFreshness alertId={alert.alertId} />
-              {' · '}
-              <button
-                type="button"
-                className="wf-btn small"
-                disabled={ackMutation.isPending}
-                onClick={() => ackMutation.mutate(alert.alertId)}
-              >
-                확인했어요
-              </button>
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   )

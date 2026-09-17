@@ -45,3 +45,6 @@ class FireDetectionResult(CamelModel):
     growth_ratio: Optional[float] = None
     spread_direction: Optional[str] = None
     spread_speed_px_per_sec: Optional[float] = None
+    # 감지된 순간의 박스 포함 프레임(JPEG base64). /danger가 이걸 실어 보내면 ADM-010 관제실
+    # 수동 등록도 CCTV 자동 폴링과 동일하게 증거 스냅샷을 남길 수 있다.
+    snapshot_base64: Optional[str] = None

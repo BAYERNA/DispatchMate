@@ -95,8 +95,12 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: admin-web/package-lock.json
-      - run: npm ci
+          cache-dependency-path: package-lock.json
+      # 3개 프론트엔드가 packages/design-system(공유 CSS)을 npm workspace로 참조해서, 루트에서
+      # 한 번에 설치해야 한다 — admin-web 디렉터리만으로는 npm ci가 워크스페이스를 못 찾는다.
+      - name: 워크스페이스 전체 설치
+        working-directory: .
+        run: npm ci
       - run: npx tsc -b
       - run: npx oxlint
       - run: npm run test
@@ -114,8 +118,10 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: commander-tablet/package-lock.json
-      - run: npm ci
+          cache-dependency-path: package-lock.json
+      - name: 워크스페이스 전체 설치
+        working-directory: .
+        run: npm ci
       - run: npx tsc -b
       - run: npx oxlint
       - run: npm run test
@@ -133,8 +139,10 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: responder-app/package-lock.json
-      - run: npm ci
+          cache-dependency-path: package-lock.json
+      - name: 워크스페이스 전체 설치
+        working-directory: .
+        run: npm ci
       - run: npx tsc -b
       - run: npx oxlint
       - run: npm run test
@@ -179,9 +187,12 @@ jobs:
           cache: npm
           cache-dependency-path: |
             notification-server/package-lock.json
-            admin-web/package-lock.json
-            commander-tablet/package-lock.json
-            responder-app/package-lock.json
+            package-lock.json
+
+      # 3개 프론트엔드가 packages/design-system(공유 CSS)을 npm workspace로 참조한다 —
+      # 루트에서 한 번에 설치해야 세 앱 + 공유 패키지가 전부 링크된다.
+      - name: 프론트엔드 워크스페이스 전체 설치
+        run: npm ci
 
       - name: backend 빌드·기동 (Flyway 마이그레이션 포함)
         working-directory: backend
@@ -222,21 +233,18 @@ jobs:
       - name: admin-web E2E
         working-directory: admin-web
         run: |
-          npm ci
           npx playwright install --with-deps chromium
           npx playwright test
 
       - name: commander-tablet E2E
         working-directory: commander-tablet
         run: |
-          npm ci
           npx playwright install --with-deps chromium
           npx playwright test
 
       - name: responder-app E2E
         working-directory: responder-app
         run: |
-          npm ci
           npx playwright install --with-deps chromium
           npx playwright test
 

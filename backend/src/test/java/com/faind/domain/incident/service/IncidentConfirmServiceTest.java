@@ -83,5 +83,8 @@ class IncidentConfirmServiceTest {
     var response = confirmService.rejectAsFalsePositive(incidentId, admin);
 
     assertThat(response.status()).isEqualTo("CLOSED");
+    // chk_incidents_confirmed_by_gate: AI_SUSPECTED를 벗어나는 CCTV_AUTO_DETECTION 출동은
+    // confirmed_by가 반드시 채워져야 한다 — 안 채우면 실제 DB에서 이 저장이 거부된다.
+    assertThat(incident.getConfirmedBy()).isEqualTo(admin.userId());
   }
 }

@@ -1,0 +1,10 @@
+{
+  "name": "@faind/design-system",
+  "version": "0.0.0",
+  "private": true,
+  "description": "출동메이트 3개 프론트엔드(admin-web/commander-tablet/responder-app)가 공유하는 디자인 토큰·와이어프레임 컴포넌트 CSS. 각 앱에 복붙해서 유지하던 걸 단일 소스로 합쳤다 — 앱마다 따로 고치다 생긴 드리프트(예: responder-app에 risk-critical 태그 스타일이 빠져 있던 것)를 구조적으로 막는다.",
+  "files": [
+    "tokens.css",
+    "components.css"
+  ]
+}

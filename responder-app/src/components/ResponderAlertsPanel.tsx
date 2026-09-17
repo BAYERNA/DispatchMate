@@ -172,11 +172,21 @@ export function ResponderAlertsPanel({ incidentId, isCommsLead }: { incidentId: 
           {mode === 'entry' && isCommsLead && (
             <>
               <div className="form-row">
-                <select className="wf-field" value={infoCategory} onChange={(e) => setInfoCategory(e.target.value as 'ENTRY' | 'HAZARD')}>
+                <select
+                  className="wf-field"
+                  aria-label="정보 구분"
+                  value={infoCategory}
+                  onChange={(e) => setInfoCategory(e.target.value as 'ENTRY' | 'HAZARD')}
+                >
                   <option value="ENTRY">진입 정보</option>
                   <option value="HAZARD">위험 요인</option>
                 </select>
-                <select className="wf-field" value={statusTag} onChange={(e) => setStatusTag(e.target.value as typeof statusTag)}>
+                <select
+                  className="wf-field"
+                  aria-label="통행 상태"
+                  value={statusTag}
+                  onChange={(e) => setStatusTag(e.target.value as typeof statusTag)}
+                >
                   <option value="PASSABLE">통과가능</option>
                   <option value="BLOCKED">막힘</option>
                   <option value="DANGER">위험</option>
@@ -185,6 +195,7 @@ export function ResponderAlertsPanel({ incidentId, isCommsLead }: { incidentId: 
               <div className="form-row">
                 <input
                   className="wf-field"
+                  aria-label="위치"
                   placeholder="위치 (예: 2층 복도)"
                   value={locationLabel}
                   onChange={(e) => setLocationLabel(e.target.value)}
@@ -193,6 +204,7 @@ export function ResponderAlertsPanel({ incidentId, isCommsLead }: { incidentId: 
               <div className="form-row">
                 <input
                   className="wf-field"
+                  aria-label="추가 설명"
                   placeholder="추가 설명 (선택)"
                   value={entryMessage}
                   onChange={(e) => setEntryMessage(e.target.value)}
@@ -208,6 +220,7 @@ export function ResponderAlertsPanel({ incidentId, isCommsLead }: { incidentId: 
             <div className="form-row">
               <input
                 className="wf-field"
+                aria-label="지원요청 항목"
                 placeholder="예: 공기호흡기:2, 인력:3"
                 value={items}
                 onChange={(e) => setItems(e.target.value)}
@@ -222,6 +235,7 @@ export function ResponderAlertsPanel({ incidentId, isCommsLead }: { incidentId: 
             <div className="form-row">
               <input
                 className="wf-field"
+                aria-label="위험정보 내용"
                 placeholder="예: 2층 붕괴 위험, 즉시 대피"
                 value={warningMessage}
                 onChange={(e) => setWarningMessage(e.target.value)}
@@ -235,23 +249,26 @@ export function ResponderAlertsPanel({ incidentId, isCommsLead }: { incidentId: 
           {error && <Banner kind="error" message={error} />}
         </form>
 
-        {alertsQuery.isLoading && <div className="spinner-text">불러오는 중…</div>}
-        {alerts.length === 0 && !alertsQuery.isLoading && <div className="spinner-text">아직 알림이 없습니다.</div>}
-        {alerts.map((alert) => (
-          <div key={alert.alertId} className="alert-item">
-            <div>
-              <strong>{ALERT_TYPE_LABEL[alert.alertType ?? ''] ?? alert.alertType}</strong> {describeAlert(alert)}
+        {/* 실시간 알림 피드 — 새 알림이 도착하면 스크린 리더 사용자에게도 낭독되도록 aria-live로 감싼다. */}
+        <div aria-live="polite">
+          {alertsQuery.isLoading && <div className="spinner-text">불러오는 중…</div>}
+          {alerts.length === 0 && !alertsQuery.isLoading && <div className="spinner-text">아직 알림이 없습니다.</div>}
+          {alerts.map((alert) => (
+            <div key={alert.alertId} className="alert-item">
+              <div>
+                <strong>{ALERT_TYPE_LABEL[alert.alertType ?? ''] ?? alert.alertType}</strong> {describeAlert(alert)}
+              </div>
+              <div className="alert-meta">
+                {formatTime(alert.sentAt)} · {alert.sourceType}
+                <AckFreshness alertId={alert.alertId} />
+                {' · '}
+                <button type="button" className="wf-btn small" disabled={ackMutation.isPending} onClick={() => ackMutation.mutate(alert.alertId)}>
+                  확인했어요
+                </button>
+              </div>
             </div>
-            <div className="alert-meta">
-              {formatTime(alert.sentAt)} · {alert.sourceType}
-              <AckFreshness alertId={alert.alertId} />
-              {' · '}
-              <button type="button" className="wf-btn small" disabled={ackMutation.isPending} onClick={() => ackMutation.mutate(alert.alertId)}>
-                확인했어요
-              </button>
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   )

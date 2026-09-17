@@ -47,6 +47,11 @@ public class AiJudgmentLog {
   @Column(name = "detection_source", length = 10)
   private String detectionSource;
 
+  // ADM-001 "AI 의심감지 대기열" 증거 스냅샷(감지 박스가 그려진 JPEG, base64) — 관제실이 신뢰도
+  // 숫자만 보고 확인/오탐을 결정하지 않아도 되게 한다. CCTV_DETECTION 전용, 없으면 NULL.
+  @Column(name = "snapshot_base64", columnDefinition = "TEXT")
+  private String snapshotBase64;
+
   @Column
   private String summary;
 
@@ -58,12 +63,13 @@ public class AiJudgmentLog {
   public AiJudgmentLog(
       String judgmentType, UUID relatedIncidentId, UUID relatedReportId, UUID sourceDeviceId,
       BigDecimal confidenceScore, String summary) {
-    this(judgmentType, relatedIncidentId, relatedReportId, sourceDeviceId, confidenceScore, null, null, summary);
+    this(judgmentType, relatedIncidentId, relatedReportId, sourceDeviceId, confidenceScore, null, null, null, summary);
   }
 
   public AiJudgmentLog(
       String judgmentType, UUID relatedIncidentId, UUID relatedReportId, UUID sourceDeviceId,
-      BigDecimal confidenceScore, BigDecimal dangerScore, String detectionSource, String summary) {
+      BigDecimal confidenceScore, BigDecimal dangerScore, String detectionSource, String snapshotBase64,
+      String summary) {
     this.judgmentType = judgmentType;
     this.relatedIncidentId = relatedIncidentId;
     this.relatedReportId = relatedReportId;
@@ -71,6 +77,7 @@ public class AiJudgmentLog {
     this.confidenceScore = confidenceScore;
     this.dangerScore = dangerScore;
     this.detectionSource = detectionSource;
+    this.snapshotBase64 = snapshotBase64;
     this.summary = summary;
     this.createdAt = LocalDateTime.now();
   }
@@ -109,6 +116,10 @@ public class AiJudgmentLog {
 
   public String getDetectionSource() {
     return detectionSource;
+  }
+
+  public String getSnapshotBase64() {
+    return snapshotBase64;
   }
 
   public String getSummary() {

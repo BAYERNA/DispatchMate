@@ -57,6 +57,10 @@ dependencies {
 
 	// Actuator (health checks per architecture diagram)
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	// Prometheus 포맷 메트릭 노출 — resilience4j-spring-boot3가 CircuitBreaker 상태를 자동으로
+	// Micrometer에 등록하므로, 이 의존성 하나만 추가해도 별 코드 변경 없이 서킷 open/half-open 여부·
+	// 실패율이 관측 가능해진다(지금까진 로그를 뒤져야만 알 수 있었다).
+	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 
 	// Utilities
 	compileOnly 'org.projectlombok:lombok'

@@ -22,6 +22,7 @@ export interface ManualDetectionInput {
   dangerScore?: number
   summary: string
   addressHint?: string
+  snapshotBase64?: string | null
 }
 
 // ADM-010(Phase 5): 상시 감시 화면에서 위험 카메라를 발견해 수동으로 "출동의심" 등록.

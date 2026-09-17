@@ -17,4 +17,6 @@ public record CctvDetectionRequest(
     // Phase 6 ADM-009 통계용. YoloService danger_score(0~100) 원본값 — 판단 보류(값을 못 구한 경우)면 null.
     @DecimalMin("0") @DecimalMax("100") BigDecimal dangerScore,
     String summary,
-    LocalDateTime detectedAt) {}
+    LocalDateTime detectedAt,
+    // ADM-001 "AI 의심감지 대기열" 증거 스냅샷(감지 박스가 그려진 JPEG, base64) — 없으면 null.
+    String snapshotBase64) {}

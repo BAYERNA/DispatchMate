@@ -35,7 +35,10 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        # metrics/prometheus는 PUBLIC_ENDPOINTS에 없어서 SecurityConfig 기본 규칙(anyRequest
+        # authenticated)에 걸려 로그인 없이는 못 본다 — CircuitBreaker 상태를 노출하는 엔드포인트라
+        # health와 달리 인증 없이 열어줄 이유가 없다.
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: when-authorized
