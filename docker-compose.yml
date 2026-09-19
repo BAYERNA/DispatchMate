@@ -13,7 +13,7 @@ services:
     environment:
       POSTGRES_DB: faind
       POSTGRES_USER: faind
-      POSTGRES_PASSWORD: faind
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env}
     ports:
       - "5432:5432"
     volumes:
@@ -47,10 +47,10 @@ services:
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/faind
       DB_USERNAME: faind
-      DB_PASSWORD: faind
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env}
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      JWT_SECRET: faind-local-development-secret-key-change-in-production-0123456789
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the root .env}
       AI_SERVER_BASE_URL: http://ai-server:8001
       NOTIFICATION_SERVER_BASE_URL: http://notification-server:3001
       INTERNAL_WEBHOOK_TOKEN: ${INTERNAL_WEBHOOK_TOKEN:?Set INTERNAL_WEBHOOK_TOKEN in the root .env}
@@ -94,11 +94,16 @@ services:
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_USERNAME: faind
-      DB_PASSWORD: faind
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env}
       DB_NAME: faind
       BACKEND_BASE_URL: http://backend:8080
       INTERNAL_WEBHOOK_TOKEN: ${INTERNAL_WEBHOOK_TOKEN:?Set INTERNAL_WEBHOOK_TOKEN in the root .env}
-      JWT_SECRET: faind-local-development-secret-key-change-in-production-0123456789
+      SMS_GATEWAY_URL: ${SMS_GATEWAY_URL:-}
+      VOICE_GATEWAY_URL: ${VOICE_GATEWAY_URL:-}
+      MULTICHANNEL_TOKEN: ${MULTICHANNEL_TOKEN:-}
+      INTERAGENCY_WEBHOOK_URL: ${INTERAGENCY_WEBHOOK_URL:-}
+      INTERAGENCY_TOKEN: ${INTERAGENCY_TOKEN:-}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the root .env}
     ports:
       - "3001:3001"
 

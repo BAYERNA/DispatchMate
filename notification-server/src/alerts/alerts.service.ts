@@ -80,6 +80,7 @@ export class AlertsService {
     sourceType: Alert['sourceType'];
     escalationOf?: string;
     targetUserId?: string | null;
+    automationKey?: string;
   }): Promise<Alert> {
     const alert = this.alertRepository.create({
       incidentId: params.incidentId,
@@ -90,13 +91,16 @@ export class AlertsService {
       channel: 'TEXT',
       escalationOf: params.escalationOf ?? null,
       targetUserId: params.targetUserId ?? null,
+      automationKey: params.automationKey ?? null,
     });
     try {
       return await this.saveAndBroadcast(alert);
     } catch (error) {
       // Unique source ID makes retry/crash recovery and multiple workers idempotent.
-      if (params.escalationOf && (error as { code?: string }).code === '23505') {
-        const existing = await this.alertRepository.findOne({ where: { escalationOf: params.escalationOf } });
+      if ((params.escalationOf || params.automationKey) && (error as { code?: string }).code === '23505') {
+        const existing = params.automationKey
+          ? await this.alertRepository.findOne({where:{automationKey:params.automationKey}})
+          : await this.alertRepository.findOne({ where: { escalationOf: params.escalationOf } });
         if (existing) return existing;
       }
       throw error;

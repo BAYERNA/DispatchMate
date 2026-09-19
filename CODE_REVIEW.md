@@ -1,6 +1,18 @@
 # DispatchMate 코드 점검 — 2026-09-19
 
-## 후속 수정 결과 (현재 로컬 작업본)
+## 후속 수정 결과
+
+
+### 3차 운영 완성도 확장 (V10)
+
+다중 채널 경보, 자동 대원 안전 규칙, 지휘 명령, SOP, 자원 재고·요청, 실내 층별 표식, 사건 재생·내보내기,
+AI 버전·임계값 이력, 기관 협업, 운영 준비·복구 체크포인트를 추가했다. 권한 검사는 기존 세션과 출동 배정
+검사를 재사용하며, 대원에게는 본인·전체 명령과 현장 정보만 반환하고 기관 공유·채널 전송 이력은 숨긴다.
+
+검증 결과 notification-server 32개, commander-tablet 27개, responder-app 20개, admin-web 22개 테스트와
+네 빌드가 통과했다. PGlite에서 V1~V10 마이그레이션과 25개 운영 DB 시나리오가 통과했고 백업 스크립트의
+셸 구문을 검사했다. 실제 PostgreSQL/Flyway, 외부 SMS·음성·기관 게이트웨이, Java backend, Compose와
+브라우저 E2E는 이 환경에서 실행하지 못했다.
 
 ### 2차 기능 확장
 
@@ -48,15 +60,15 @@ PostgreSQL WASM 호환 엔진에서 V1~V9 적용 후 알림 전달·확인·롤�
 
 1. 루트 `.env.example`을 `.env`로 복사하고 두 내부 토큰을 서로 다른 무작위 값으로 설정한다.
 2. 카메라 IP 허용 목록 `FAIND_CAMERA_ALLOWED_HOSTS`를 설정한다. 빈 목록은 연결을 거부한다.
-3. backend Flyway V7~V9 적용 후 알림 서버를 실행한다. 네트워크가 허용된 JDK 21 CI 환경에서
+3. backend Flyway V7~V10 적용 후 알림 서버를 실행한다. 네트워크가 허용된 JDK 21 CI 환경에서
    backend 컴파일·테스트와 실제 DB 통합 검증을 먼저 수행한다.
 4. 영상은 고프레임률 MJPEG 대신 약 1초 간격 인증 프레임 미리보기다. DNS 이름, 파일 경로,
    URL 자격증명, HTTP 리다이렉트는 허용하지 않는다. 실제 카메라 호환성·성능 확인이 필요하다.
 5. 기본 개발용 JWT/DB 키 교체, TLS·서비스 격리 및 실제 장비 시험 없이 운영에 사용하지 않는다.
    내부 분석 API(`/pre-analysis`, `/sop-match`)는 인터넷에 노출하지 않는다.
 
-1차 수정은 GitHub `codex/dispatchmate-safety-status`에 반영됐다. 2차 기능 확장은 현재 로컬 작업본이며
-GitHub push·PR 생성·배포는 아직 하지 않았다.
+1·2차 변경은 GitHub `codex/dispatchmate-safety-status`에 반영됐다. V10 변경은 같은 브랜치에 반영하며,
+배포는 별도 운영 환경 검증 뒤 진행해야 한다.
 
 ---
 

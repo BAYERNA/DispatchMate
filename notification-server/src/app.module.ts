@@ -8,6 +8,7 @@ import { WebhookModule } from './common/webhook/webhook.module';
 import { AuthModule } from './auth/auth.module';
 import { HealthController } from './health.controller';
 import { OperationsModule } from './operations/operations.module';
+import { MissionModule } from './mission/mission.module';
 
 @Module({
   controllers: [HealthController],
@@ -33,6 +34,7 @@ import { OperationsModule } from './operations/operations.module';
     WebhookModule,
     EscalationModule,
     OperationsModule,
+    MissionModule,
   ],
 })
 export class AppModule {}

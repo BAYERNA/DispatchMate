@@ -61,4 +61,7 @@ export class Alert {
 
   @Column({ name: 'client_request_id', type: 'uuid', nullable: true })
   clientRequestId: string | null;
+
+  @Column({ name: 'automation_key', type: 'varchar', length: 180, nullable: true })
+  automationKey: string | null;
 }

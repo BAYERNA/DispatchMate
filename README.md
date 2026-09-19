@@ -48,14 +48,14 @@ AI·알림 서버와 세 프론트엔드는 별도 런타임입니다. 아래 �
 git clone https://github.com/BAYERNA/DispatchMate.git
 cd DispatchMate
 cp .env.example .env
-# .env의 두 내부 토큰을 서로 다른 충분히 긴 무작위 값으로 채운 뒤 실행
+# .env의 DB 비밀번호, JWT 키, 두 내부 토큰을 서로 다른 충분히 긴 무작위 값으로 채운 뒤 실행
 docker compose up -d --build
 docker compose ps
 curl -f http://localhost:8080/actuator/health
 ```
 
-`INTERNAL_WEBHOOK_TOKEN`은 backend·알림 서버가, `INTERNAL_SERVICE_TOKEN`은 backend·AI 서버가
-공유합니다. Compose는 빈 값을 거부합니다. `.env`는 Git에 올리지 마세요.
+`JWT_SECRET`은 backend·알림 서버가, `INTERNAL_WEBHOOK_TOKEN`은 backend·알림 서버가,
+`INTERNAL_SERVICE_TOKEN`은 backend·AI 서버가 공유합니다. Compose는 필수 비밀값의 누락을 거부합니다. `.env`는 Git에 올리지 마세요.
 카메라를 사용할 때는 `FAIND_CAMERA_ALLOWED_HOSTS`에 허용할 숫자 IP를 쉼표로 구분해 지정합니다.
 예: `192.168.1.10,192.168.1.11`. 빈 목록은 카메라 연결을 모두 거부합니다.
 
@@ -241,7 +241,7 @@ CI의 AI 의존성 점검은 정보성이고 npm 점검은 critical 기준이므
   Java 송신부도 Bearer 토큰을 전달하며, 토큰 미설정 시 인증을 생략하지 않습니다.
 - 공개 배포 전 TLS, 서비스 간 네트워크 격리, 외부 API 및 의존성 취약점 점검을 별도로 수행하세요.
   `/pre-analysis`, `/sop-match`는 내부 서비스용이며 공개망에 노출하지 마세요.
-- 실제 PostgreSQL에서 V7~V9 마이그레이션·계정 무효화·재알림/오프라인 명령 중복 방지 및 실제 카메라 연결을 검증하세요.
+- 실제 PostgreSQL에서 V7~V10 마이그레이션·계정 무효화·재알림/오프라인 명령 중복 방지 및 실제 카메라·SMS·음성·기관 연동을 검증하세요.
 
 ## 이번 변경 및 호환성
 
@@ -279,7 +279,7 @@ CI의 AI 의존성 점검은 정보성이고 npm 점검은 critical 기준이므
 
 새 API는 `POST /incidents/:incidentId/alerts/receipts` (`{ "alertIds": ["UUID"] }`)와
 `GET /incidents/:incidentId/alerts/delivery-status`입니다. 브라우저에서는 `/notify` 프록시를 사용합니다.
-배포 시 **backend Flyway V8과 V9를 먼저 적용**한 뒤 알림 서버와 프론트를 갱신하세요.
+배포 시 **backend Flyway V8~V10을 먼저 적용**한 뒤 알림 서버와 프론트를 갱신하세요.
 구버전 알림 서버와의 혼합 운영, 실제 PostgreSQL의 동시 세션 잠금, 전체 서비스 E2E는 별도 검증이 필요합니다.
 기존 10분 미확인 위험경고의 1회 재알림 정책은 유지합니다. 대상자 중 일부만 확인한 경우의 추가 재알림 정책은 포함하지 않습니다.
 
@@ -302,6 +302,38 @@ CI의 AI 의존성 점검은 정보성이고 npm 점검은 critical 기준이므
 
 V9은 위 기능의 `incident_events`, `training_sessions`, `training_events`, `ai_judgment_feedback`와
 오프라인 알림 명령 키를 추가합니다. V9 적용 전 알림 서버 새 버전을 실행하면 관련 API가 실패합니다.
+
+### V10 통합 현장 지휘와 운영 준비
+
+- **다중 채널 경보:** 앱 미수신 30초 후 SMS, 90초 후 음성 채널을 시도하며 결과와 재시도 시각을 저장합니다.
+  `SMS_GATEWAY_URL`, `VOICE_GATEWAY_URL`, `MULTICHANNEL_TOKEN`을 설정합니다. 게이트웨이 또는 대원 전화번호가
+  없으면 성공으로 처리하지 않고 `UNAVAILABLE`로 기록합니다.
+- **자동 대원 안전 경보:** 최신 상태의 위험 단계, 통신 두절, 심박수 180 초과, 주변 온도 80℃ 초과를 감지해
+  해당 대원에게 중복 방지 키가 있는 센서 경보를 만듭니다. 임계값은 현재 코드 정책이며 의료 진단 기준이 아닙니다.
+- **현장 지휘:** 지휘관은 개인·전체 명령, 인원 점검, 철수와 지휘권 인계를 발령하고 상태를 추적합니다.
+  출동 유형별 SOP는 출동 시점의 체크리스트로 복사되어 이후 템플릿 변경과 분리됩니다.
+- **자원·실내 작전도:** 장비 재고와 출동별 요청·승인을 연결하고, 층과 위험·진입·대피·구조대상 표식을 공유합니다.
+  재고 연결 요청은 승인 시 트랜잭션 안에서 가용 수량을 차감합니다.
+- **재생·감사:** 지휘 화면의 사건 타임라인을 순서대로 재생하고 JSON 감사 파일로 내보낼 수 있습니다.
+  명령, SOP, 자원, 작전 표식, 기관 공유 상태 변경도 `incident_events`에 남습니다.
+- **AI 운영:** 관리자는 모델 버전 활성화와 임계값 변경 사유를 기록합니다. 모델별 활성 버전은 하나만 허용됩니다.
+- **기관 협업:** 분류 등급이 있는 공유 초안을 운영자가 승인한 뒤 고정된 `INTERAGENCY_WEBHOOK_URL`로 전송합니다.
+  URL 미설정이나 전송 실패는 `FAILED`로 남습니다.
+- **운영 준비:** 관리자 화면은 미수신·미확인 알림, 대체 채널 실패, 미완료 명령, 필수 SOP와 최근 복구 검증을 표시합니다.
+
+V10은 위 기능에 필요한 운영 테이블과 감사 트리거를 추가합니다. 알림 서버는 30초 주기의 단일 프로세스 타이머를
+사용하므로 여러 인스턴스를 운영할 때에도 DB 유일 키로 알림 중복은 막지만 외부 채널 작업 큐를 대신하지는 않습니다.
+실제 SMS·음성 공급자 형식, 기관 연동 계약, 실내 도면 좌표 및 센서 임계값은 현장 환경에 맞게 검증해야 합니다.
+
+백업과 복구 시험은 다음처럼 실행합니다. 복구 명령은 지정한 DB를 정리하므로 반드시 폐기 가능한 검증 DB만 사용합니다.
+
+```bash
+DATABASE_URL='postgresql://...' BACKUP_OUTPUT_DIR=./backups ./scripts/backup-postgres.sh
+BACKUP_ARCHIVE=./backups/<file>.dump RESTORE_DATABASE_URL='postgresql://.../disposable' \
+  ALLOW_RESTORE_TEST=YES ./scripts/verify-postgres-restore.sh
+```
+
+복구 시험 후 관리자 화면에 백업 참조와 SHA-256을 등록하고, 실제 복구 결과를 확인한 운영자만 검증 완료로 표시합니다.
 
 DB 트리거·수신 재시도·확인 중복 방지·훈련 상태 전이·AI 피드백 검증은 임시 PGlite 설치로 재현할 수 있습니다.
 이 검증은 PostgreSQL WASM 엔진과 저장소 어댑터를 사용하며 실제 PostgreSQL/Flyway 실행을 대체하지 않습니다.
