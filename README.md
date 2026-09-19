@@ -241,7 +241,7 @@ CI의 AI 의존성 점검은 정보성이고 npm 점검은 critical 기준이므
   Java 송신부도 Bearer 토큰을 전달하며, 토큰 미설정 시 인증을 생략하지 않습니다.
 - 공개 배포 전 TLS, 서비스 간 네트워크 격리, 외부 API 및 의존성 취약점 점검을 별도로 수행하세요.
   `/pre-analysis`, `/sop-match`는 내부 서비스용이며 공개망에 노출하지 마세요.
-- 실제 PostgreSQL에서 V7~V11 마이그레이션·계정 무효화·재알림/오프라인 명령 중복 방지 및 실제 카메라·SMS·음성·기관 연동을 검증하세요.
+- 실제 PostgreSQL에서 V7~V12 마이그레이션·계정 무효화·재알림/오프라인 명령 중복 방지 및 실제 카메라·SMS·음성·기관 연동을 검증하세요.
 
 ## 이번 변경 및 호환성
 
@@ -279,7 +279,7 @@ CI의 AI 의존성 점검은 정보성이고 npm 점검은 critical 기준이므
 
 새 API는 `POST /incidents/:incidentId/alerts/receipts` (`{ "alertIds": ["UUID"] }`)와
 `GET /incidents/:incidentId/alerts/delivery-status`입니다. 브라우저에서는 `/notify` 프록시를 사용합니다.
-배포 시 **backend Flyway V8~V11을 먼저 적용**한 뒤 알림 서버와 프론트를 갱신하세요.
+배포 시 **backend Flyway V8~V12를 먼저 적용**한 뒤 알림 서버와 프론트를 갱신하세요.
 구버전 알림 서버와의 혼합 운영, 실제 PostgreSQL의 동시 세션 잠금, 전체 서비스 E2E는 별도 검증이 필요합니다.
 기존 10분 미확인 위험경고의 1회 재알림 정책은 유지합니다. 대상자 중 일부만 확인한 경우의 추가 재알림 정책은 포함하지 않습니다.
 
@@ -358,6 +358,35 @@ PGLITE_ROOT=/tmp/dispatchmate-db-check/node_modules/@electric-sql/pglite node te
 
 Web Push는 대원 화면의 “종료 상태 푸시 활성화”에서 서비스 워커를 등록합니다. 빌드 시 `VITE_WEB_PUSH_PUBLIC_KEY`가 필요합니다. Prometheus 스크레이퍼는 인증 토큰과 함께 `GET /operations/metrics/prometheus`를 호출할 수 있습니다. 외부 계약 전에는 `node scripts/mock-operations-gateway.mjs` 또는 `scripts/test-mock-gateway.sh`로 PUSH/SMS/음성/기관/경로 어댑터 형식을 점검합니다.
 
-외부 푸시, 도로 라우팅, BLE/UWB, RFID 리더, 병원 시스템은 공급자별 계약이 없으므로 고정 설정 어댑터와 실패 상태까지만 제공합니다. URL·토큰·장비가 없으면 성공으로 처리하지 않습니다. V11 적용 후 새 알림 서버와 세 프론트엔드를 함께 배포하세요.
+외부 푸시, 도로 라우팅, BLE/UWB, RFID 리더, 병원 시스템은 공급자별 계약이 없으므로 고정 설정 어댑터와 실패 상태까지만 제공합니다. URL·토큰·장비가 없으면 성공으로 처리하지 않습니다. V12 적용 후 새 알림 서버와 세 프론트엔드를 함께 배포하세요.
+
+### V12 복원력·거버넌스·연합 운영
+
+- **다중 인스턴스 안전성:** 자동화 주기는 DB lease와 fencing token으로 한 인스턴스만 실행합니다. 작업 전달은 기존 `FOR UPDATE SKIP LOCKED` 큐와 멱등 키를 유지합니다.
+- **불변 감사:** 중요 작업을 SHA-256 hash chain으로 연결하고 관리자 화면/API에서 전체 체인을 검증합니다. DB 관리자에 의한 원본 삭제까지 막는 WORM 저장소는 별도 운영 인프라가 필요합니다.
+- **비밀·Zero Trust 준비:** Vault/KMS 계열 공급자와 mTLS 인증서 경로의 설정 여부를 값 노출 없이 진단하며 fail-closed 상태를 표시합니다. 인증서 발급·회전과 실제 비밀 주입은 플랫폼에서 구성해야 합니다.
+- **재해복구·Chaos:** 복구/장애훈련 실행 이력과 증거를 저장합니다. `scripts/check-security-readiness.sh`와 `scripts/run-chaos-drill.sh`는 운영 오실행을 막는 가드를 제공하며 Chaos는 staging/sandbox와 명시적 승인에서만 허용합니다.
+- **오프라인 충돌 해소:** mutation UUID, base/server version, 충돌 필드와 서버 해석값을 저장합니다. 같은 mutation 재전송은 동일 결과를 반환합니다.
+- **공간·BIM·무전:** IFC/glTF/GeoJSON/SVG 모델 메타데이터와 해시, 무전 전사·검토 상태를 저장합니다. 기본 V12는 GeoJSON 좌표를 사용하며 `scripts/enable-postgis.sql`을 별도로 적용하면 공간 인덱스를 활성화합니다.
+- **서명·증거·개인정보:** 환자 인계 등 문서의 서명 메타데이터, 증거 chain-of-custody, 법적 보존, 삭제·익명화·보관 정책을 관리합니다. 외부 서명 인증기관과 보관 워커 연결 전에는 서명을 `PENDING`으로 둡니다.
+- **AI 사람 승인:** 모델 후보는 설명과 artifact hash를 보관하고 승인 후에만 활성화합니다. 기존 활성 버전은 rollback 상태로 전환되며 운영 배포기는 이 상태를 기준으로 artifact를 교체해야 합니다.
+- **기관 연합·수요 예측·공개 상태:** 신뢰 승인 기관만 제한 범위와 만료시간으로 사건을 공유합니다. 자원 수요는 근거·신뢰도·면책문구를 함께 저장하고 자동 배치하지 않습니다. 공개 포털 토큰은 허용 필드만 반환하며 원본 위치·환자·대원 정보는 노출하지 않습니다.
+- **역할·접근성:** 사용자별 언어, 고대비, 모션 축소, 글자 배율과 역할 레이아웃 선호를 저장할 수 있습니다. 네이티브 앱/웨어러블·백그라운드 위치는 플랫폼 SDK와 기기 MDM 계약이 필요해 이번 저장소에서는 PWA/푸시·API 계약까지만 제공합니다.
+
+관리자 콘솔의 `ADM-GOV 복원력·거버넌스`에서 감사 체인, 리스, 동기화 충돌, 법적 보존 증거, AI 릴리스, 연합 기관과 보안 준비 상태를 확인합니다. 공개 상태 토큰은 발급 응답에 한 번만 평문으로 반환되므로 별도 안전 채널로 전달하고 만료를 짧게 설정하세요.
+
+```bash
+# 운영 배포 전 비밀/mTLS 준비 상태 정적 점검
+./scripts/check-security-readiness.sh
+
+# 선택 기능: PostGIS가 포함된 PostgreSQL에서만 DB owner가 실행
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/enable-postgis.sql
+
+# 승인된 비운영 환경의 Chaos 실행 가드
+CHAOS_TARGET_ENVIRONMENT=staging CHAOS_APPROVED=true \
+  CHAOS_SCENARIO=gateway-timeout ./scripts/run-chaos-drill.sh
+```
+
+V12의 실제 Vault/KMS 조회, mTLS handshake, BIM 렌더러, 음성 인식 공급자, 전자서명 공개키 검증, 보존정책 실행 워커, 연합기관 인증서 교환, 네이티브 기기 기능은 외부 인프라/계약/키가 있어야 완료됩니다. 설정이 없을 때 연결 성공으로 표시하지 않습니다.
 
 2026-09-19 코드 점검의 근거, 재현 결과, 미검증 범위는 [CODE_REVIEW.md](CODE_REVIEW.md)를 참고하세요.

@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { hostname } from 'node:os';
 import { Alert } from '../alerts/entities/alert.entity';
 import { AlertsService } from '../alerts/alerts.service';
 
@@ -10,7 +11,7 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
   private timer?: NodeJS.Timeout;
   private running = false;
   private readonly logger = new Logger(AutomationService.name);
-  private readonly workerId = `notification-${process.pid}`;
+  private readonly workerId = `notification-${hostname()}-${process.pid}`;
 
   constructor(@InjectRepository(Alert) private readonly db: Repository<Alert>, private readonly alerts: AlertsService, private readonly config: ConfigService) {}
   onModuleInit() { void this.run(); this.timer = setInterval(() => void this.run(), 30_000); this.timer.unref(); }
@@ -19,12 +20,22 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
   async run() {
     if (this.running) return;
     this.running = true;
+    let lease: { fencingToken: number } | null = null;
     try {
+      lease = await this.acquireLease();
+      if (!lease) return;
       await this.safety(); await this.expirePar(); await this.repeatMaydays();
       await this.channels(); await this.processJobs(); await this.captureDrift();
     } catch (error) { this.logger.error('운영 자동화 점검 실패', error); }
-    finally { this.running = false; }
+    finally { if (lease) await this.releaseLease(lease.fencingToken).catch(error => this.logger.warn(`리스 해제 실패: ${error}`)); this.running = false; }
   }
+
+  private async acquireLease() {
+    const rows = await this.db.query(`INSERT INTO cluster_leases(lease_key,owner_id,expires_at) VALUES('automation:primary',$1,now()+interval '45 seconds') ON CONFLICT(lease_key) DO UPDATE SET owner_id=EXCLUDED.owner_id,fencing_token=cluster_leases.fencing_token+1,acquired_at=now(),heartbeat_at=now(),expires_at=EXCLUDED.expires_at WHERE cluster_leases.expires_at<now() OR cluster_leases.owner_id=EXCLUDED.owner_id RETURNING fencing_token AS "fencingToken"`, [this.workerId]);
+    return rows[0] ?? null;
+  }
+
+  private releaseLease(fencingToken: number) { return this.db.query(`DELETE FROM cluster_leases WHERE lease_key='automation:primary' AND owner_id=$1 AND fencing_token=$2`, [this.workerId, fencingToken]); }
 
   private async safety() {
     const rows = await this.db.query(`SELECT DISTINCT ON(s.incident_id,s.user_id) s.incident_id AS "incidentId",s.user_id AS "userId",s.recorded_at AS "recordedAt",s.risk_level AS "riskLevel",s.connection_status AS "connectionStatus",s.biometric_data AS "biometricData",s.environment_data AS "environmentData" FROM responder_status_logs s JOIN incidents i ON i.incident_id=s.incident_id WHERE i.status<>'CLOSED' ORDER BY s.incident_id,s.user_id,s.recorded_at DESC`);

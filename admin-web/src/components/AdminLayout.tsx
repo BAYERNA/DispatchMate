@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { to: '/statistics', label: 'ADM-009 기관 통계 대시보드' },
   { to: '/operations', label: 'ADM-OPS 운영 준비·AI 모델' },
   { to: '/intelligence', label: 'ADM-SRE 관측성·연동' },
+  { to: '/governance', label: 'ADM-GOV 복원력·거버넌스' },
 ]
 
 export function AdminLayout({ children, title, screenId }: { children: ReactNode; title: string; screenId: string }) {

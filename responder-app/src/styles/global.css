@@ -34,3 +34,26 @@ table {
   border-collapse: collapse;
   width: 100%;
 }
+
+html[data-high-contrast='true'] {
+  filter: contrast(1.35);
+}
+
+html[data-high-contrast='true'] :focus-visible {
+  outline: 3px solid #ffbf00;
+  outline-offset: 2px;
+}
+
+html[data-reduced-motion='true'] *,
+html[data-reduced-motion='true'] *::before,
+html[data-reduced-motion='true'] *::after {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+.accessibility-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}

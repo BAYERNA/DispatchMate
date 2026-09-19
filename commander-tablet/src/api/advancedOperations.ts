@@ -10,3 +10,7 @@ export const afterAction=(id:string)=>notifyRequest(`/incidents/${id}/after-acti
 export const trainingFromIncident=(id:string)=>notifyRequest(`/incidents/${id}/training-from-incident`,{method:'POST',body:{}})
 export const runTwin=(id:string)=>notifyRequest(`/incidents/${id}/digital-twin`,{method:'POST',body:{scenario:'SMOKE',inputs:{elapsedSeconds:300,windMps:1}}})
 export const createHandover=(id:string,body:unknown)=>notifyRequest(`/incidents/${id}/handovers`,{method:'POST',body})
+export const forecastResources=(id:string)=>notifyRequest<any>(`/governance/incidents/${id}/forecast`,{method:'POST',body:{horizonMinutes:60}})
+export const addTranscript=(id:string,body:unknown)=>notifyRequest(`/governance/incidents/${id}/transcripts`,{method:'POST',body})
+export const preserveEvidence=(id:string,body:unknown)=>notifyRequest(`/governance/incidents/${id}/evidence`,{method:'POST',body})
+export const createPublicStatusToken=(id:string)=>notifyRequest<any>(`/governance/incidents/${id}/public-token`,{method:'POST',body:{audience:'FACILITY_MANAGER',ttlMinutes:30}})

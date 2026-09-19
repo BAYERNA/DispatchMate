@@ -17,6 +17,7 @@ const { OperationsService } = require('../dist/operations/operations.service.js'
 const { MissionService } = require('../dist/mission/mission.service.js');
 const { AutomationService } = require('../dist/mission/automation.service.js');
 const { AdvancedOperationsService } = require('../dist/advanced-operations/advanced-operations.service.js');
+const { GovernanceService } = require('../dist/governance/governance.service.js');
 const db = new PGlite({ extensions: { pgcrypto } });
 const migrations = new URL('../../backend/src/main/resources/db/migration/', import.meta.url);
 const rows = async (sql, args = []) => (await db.query(sql, args)).rows;
@@ -43,6 +44,7 @@ try {
   await db.exec(await readFile(new URL('V9__operations_timeline_training_and_ai_feedback.sql', migrations), 'utf8'));
   await db.exec(await readFile(new URL('V10__mission_control_and_operational_readiness.sql', migrations), 'utf8'));
   await db.exec(await readFile(new URL('V11__field_safety_and_operational_intelligence.sql', migrations), 'utf8'));
+  await db.exec(await readFile(new URL('V12__resilience_governance_and_federation.sql', migrations), 'utf8'));
   const delivery = new DeliveryService({ query: rows });
   const operator = {userId:uuid(99),role:'COMMANDER'};
   const user = {userId:a,role:'RESPONDER'};
@@ -154,5 +156,16 @@ try {
   await rows(`INSERT INTO responder_status_logs(incident_id,user_id,recorded_at,risk_level,connection_status,biometric_data,environment_data) VALUES($1,$2,now(),'DANGER','DISCONNECTED','{"heartRate":190}','{"ambientTemperature":90}')`,[incident,a]);
   const automated=[];const automation=new AutomationService({query:rows},{createFromSystem:async value=>{automated.push(value);return value}},{get:()=>undefined});await automation.safety();assert.ok(automated.length>=4);checks++;
   await rows(`UPDATE alert_deliveries SET queued_at=now()-interval '2 minutes' WHERE alert_id=$1`,[broadcast]);await automation.channels();const queued=await rows(`SELECT count(*)::int AS n FROM durable_jobs WHERE payload->>'alertId'=$1`,[broadcast]);assert.equal(queued[0].n,3);checks++;
+  const governance=new GovernanceService(missionRepo,{get:(key,fallback)=>fallback});
+  const lease=await governance.acquireLease('automation:primary','node-a',30);assert.equal(lease.ownerId,'node-a');assert.equal(await governance.acquireLease('automation:primary','node-b',30),null);assert.equal((await governance.releaseLease('automation:primary','node-a',Number(lease.fencingToken))).released,true);checks++;
+  const audit=await governance.audit(adminUser,'INCIDENT_REVIEWED','incident',incident,{result:'ok'},incident);assert.ok(audit.eventHash);assert.equal((await governance.verifyAudit(adminUser)).valid,true);checks++;
+  const mutation=uuid(300);const sync1=await governance.sync(responderUser,{mutationId:mutation,incidentId:incident,entityType:'status',entityId:a,operation:'UPDATE',baseVersion:0,payload:{state:'SAFE'}});assert.equal(sync1.resolution,'APPLIED');assert.equal((await governance.sync(responderUser,{mutationId:mutation,entityType:'status',entityId:a,operation:'UPDATE',payload:{}})).serverVersion,1);checks++;
+  const sync2=await governance.sync(responderUser,{mutationId:uuid(301),incidentId:incident,entityType:'status',entityId:a,operation:'UPDATE',baseVersion:0,payload:{state:'DANGER'}});assert.equal(sync2.resolution,'CONFLICT');checks++;
+  const model=await governance.registerModel(adminUser,{modelName:'fire-v2',version:'2.0',artifactUri:'registry://fire/2.0',artifactHash:'b'.repeat(64),explanation:{dataset:'validated'}});await governance.modelAction(model.releaseId,adminUser,'APPROVE');assert.equal((await governance.modelAction(model.releaseId,adminUser,'ACTIVATE')).status,'ACTIVE');checks++;
+  const forecast=await governance.forecast(incident,commanderUser,{horizonMinutes:60});assert.equal(forecast.disclaimer.includes('자동 배치하지 않습니다'),true);checks++;
+  const evidence=await governance.evidence(incident,commanderUser,{evidenceType:'VIDEO',sourceUri:'evidence://camera/1',contentHash:'c'.repeat(64),legalHold:true});assert.equal(evidence.custodyHash.length,64);checks++;
+  await governance.buildingModel(adminUser,{facilityName:'훈련동',modelFormat:'IFC',version:'1',sourceUri:'bim://training/1',contentHash:'d'.repeat(64)});await governance.transcript(incident,commanderUser,{channelLabel:'지휘망',transcript:'2층 수색 완료',startedAt:new Date().toISOString()});checks++;
+  const publicToken=await governance.createPublicToken(incident,commanderUser,{audience:'PUBLIC',ttlMinutes:10});const publicView=await governance.publicStatus(publicToken.token);assert.equal(publicView.status,'IN_PROGRESS');assert.equal(publicView.location,undefined);checks++;
+  await governance.preferences(responderUser,{locale:'ko-KR',highContrast:true,textScale:1.25,roleLayout:{compact:true}});await governance.retention(adminUser,{dataCategory:'radio_transcript',retentionDays:180,action:'ANONYMIZE'});checks++;
   console.log(`PASS: ${checks} operations database scenarios (PGlite; production PostgreSQL/Flyway still require verification)`);
 } finally { await db.close(); }

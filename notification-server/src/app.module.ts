@@ -10,6 +10,7 @@ import { HealthController } from './health.controller';
 import { OperationsModule } from './operations/operations.module';
 import { MissionModule } from './mission/mission.module';
 import { AdvancedOperationsModule } from './advanced-operations/advanced-operations.module';
+import { GovernanceModule } from './governance/governance.module';
 
 @Module({
   controllers: [HealthController],
@@ -37,6 +38,7 @@ import { AdvancedOperationsModule } from './advanced-operations/advanced-operati
     OperationsModule,
     MissionModule,
     AdvancedOperationsModule,
+    GovernanceModule,
   ],
 })
 export class AppModule {}
