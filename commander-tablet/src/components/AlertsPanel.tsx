@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
-import { acknowledgeAlert, getAckFreshness, listAlerts, postRiskWarning } from '../api/alerts'
+import { acknowledgeAlert, getAckFreshness, getDeliveryStatus, listAlerts, postRiskWarning } from '../api/alerts'
+import { DeliveryStatus } from './DeliveryStatus'
 import { ApiError } from '../api/client'
 import { Banner } from '../components/Banner'
 import type { AlertResponse, AssignmentResponse } from '../types'
@@ -36,8 +37,8 @@ function AckFreshness({ alertId }: { alertId: string }) {
       {' '}
       · 확인 {acknowledgedUserIds.length}명
       {lastAcknowledgedAt
-        ? ` · 최근 ${formatTime(lastAcknowledgedAt)}${isStale ? ' (갱신 필요)' : ''}`
-        : ' · 확인자 없음 (갱신 필요)'}
+        ? ` · 최근 ${formatTime(lastAcknowledgedAt)}${isStale ? ' (10분 이상 경과)' : ''}`
+        : ' · 확인자 없음'}
     </span>
   )
 }
@@ -51,7 +52,8 @@ export function AlertsPanel({ incidentId, assignments }: { incidentId: string; a
   const [message, setMessage] = useState('')
   const [feedback, setFeedback] = useState<{ kind: 'error' | 'success'; text: string } | null>(null)
 
-  const alertsQuery = useQuery({ queryKey: ['alerts', incidentId], queryFn: () => listAlerts(incidentId) })
+  const alertsQuery = useQuery({ queryKey: ['alerts', incidentId], queryFn: () => listAlerts(incidentId), refetchInterval: 10000 })
+  const deliveryQuery = useQuery({ queryKey: ['alert-deliveries', incidentId], queryFn: () => getDeliveryStatus(incidentId), refetchInterval: 5000 })
 
   const sendWarningMutation = useMutation({
     mutationFn: () => postRiskWarning(incidentId, { targetUserId: targetUserId || undefined, channel, message }),
@@ -66,6 +68,7 @@ export function AlertsPanel({ incidentId, assignments }: { incidentId: string; a
   const ackMutation = useMutation({
     mutationFn: (alertId: string) => acknowledgeAlert(alertId),
     onSuccess: (_data, alertId) => queryClient.invalidateQueries({ queryKey: ['ack-freshness', alertId] }),
+    onError: () => setFeedback({ kind: 'error', text: '확인이 저장되지 않았습니다. 연결 후 다시 눌러주세요.' }),
   })
 
   function handleSubmit(e: FormEvent) {
@@ -128,8 +131,10 @@ export function AlertsPanel({ incidentId, assignments }: { incidentId: string; a
 
         {/* 실시간 알림 피드 — 새 알림이 도착하면 스크린 리더 사용자에게도 낭독되도록 aria-live로 감싼다. */}
         <div aria-live="polite">
+          {alertsQuery.isError && <Banner kind="error" message="알림 동기화 실패. 연결 후 자동으로 재시도합니다." />}
+          {deliveryQuery.isError && <Banner kind="error" message="전달 현황을 갱신하지 못했습니다. 표시된 기록은 최신 상태가 아닐 수 있습니다." />}
           {alertsQuery.isLoading && <div className="spinner-text">불러오는 중…</div>}
-          {alerts.length === 0 && !alertsQuery.isLoading && <div className="spinner-text">아직 알림이 없습니다.</div>}
+          {alerts.length === 0 && !alertsQuery.isLoading && !alertsQuery.isError && <div className="spinner-text">아직 알림이 없습니다.</div>}
           {alerts.map((alert) => (
             <div key={alert.alertId} className="alert-item">
               <div>
@@ -148,6 +153,7 @@ export function AlertsPanel({ incidentId, assignments }: { incidentId: string; a
                   확인했어요
                 </button>
               </div>
+              <DeliveryStatus status={deliveryQuery.data?.find(status => status.alertId === alert.alertId)} />
             </div>
           ))}
         </div>

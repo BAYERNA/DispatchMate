@@ -42,4 +42,13 @@ describe('AlertsGateway', () => {
     expect(client.join).not.toHaveBeenCalled();
     expect(sessions.verify).not.toHaveBeenCalled();
   });
+  it('does not leak targeted alerts or confirmations to other responders', async () => {
+    for (const event of ['alert:created', 'alert:acknowledged']) {
+      await (gateway as any).deliver(`incident:${incidentId}`, event, { targetUserId: 'someone-else' }, incidentId);
+    }
+    expect(client.emit).not.toHaveBeenCalled();
+    expect(client.disconnect).not.toHaveBeenCalled();
+    await (gateway as any).deliver(`incident:${incidentId}`, 'alert:created', {targetUserId:'u'}, incidentId);
+    expect(client.emit).toHaveBeenCalledTimes(1);
+  });
 });

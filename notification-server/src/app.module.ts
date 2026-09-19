@@ -7,6 +7,7 @@ import { EscalationModule } from './escalation/escalation.module';
 import { WebhookModule } from './common/webhook/webhook.module';
 import { AuthModule } from './auth/auth.module';
 import { HealthController } from './health.controller';
+import { OperationsModule } from './operations/operations.module';
 
 @Module({
   controllers: [HealthController],
@@ -31,6 +32,7 @@ import { HealthController } from './health.controller';
     AckModule,
     WebhookModule,
     EscalationModule,
+    OperationsModule,
   ],
 })
 export class AppModule {}

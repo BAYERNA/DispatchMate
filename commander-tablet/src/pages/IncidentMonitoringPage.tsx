@@ -8,6 +8,9 @@ import { DroneReconCard } from '../components/DroneReconCard'
 import { LiveCameraPanel } from '../components/LiveCameraPanel'
 import { AlertsPanel } from '../components/AlertsPanel'
 import { AssignResponderPanel } from '../components/AssignResponderPanel'
+import { IncidentTimeline } from '../components/IncidentTimeline'
+import { OperationsMap } from '../components/OperationsMap'
+import { AiFeedbackPanel } from '../components/AiFeedbackPanel'
 import { CloseConfirmDialog } from '../components/CloseConfirmDialog'
 import { closeIncident, getAiJudgments, getMonitoring, reassignCommsLead } from '../api/incidents'
 import { getAccount } from '../api/accounts'
@@ -150,6 +153,7 @@ export function IncidentMonitoringPage() {
           <div className="monitoring-layout">
             <div>
               <LiveCameraPanel incidentId={incidentId} />
+              <div className="wf" style={{marginBottom:14}}><div className="wf-header"><span>작전 위치</span></div><div className="wf-body"><OperationsMap incidentId={incidentId}/></div></div>
 
               <div className="wf" style={{ marginBottom: 14 }}>
                 <div className="wf-header">
@@ -208,6 +212,8 @@ export function IncidentMonitoringPage() {
 
             <div>
               <AlertsPanel incidentId={incidentId} assignments={data.assignments} />
+              <AiFeedbackPanel judgments={judgments}/>
+              <IncidentTimeline incidentId={incidentId}/>
             </div>
           </div>
         </>

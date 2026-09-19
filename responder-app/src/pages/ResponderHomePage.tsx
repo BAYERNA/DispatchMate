@@ -7,6 +7,7 @@ import { useAuth } from '../auth/useAuth'
 import { getMonitoring, getMyActiveIncidents } from '../api/incidents'
 import { useIncidentSocket } from '../ws/useIncidentSocket'
 import './ResponderHomePage.css'
+import { OfflineOutboxStatus } from '../components/OfflineOutboxStatus'
 
 const INCIDENT_TYPE_LABEL: Record<string, string> = { FIRE: '화재', RESCUE: '구조', EMERGENCY: '응급' }
 const STATUS_LABEL: Record<string, string> = { AI_SUSPECTED: 'AI 의심감지', DISPATCHED: '출동중', IN_PROGRESS: '진행중', CLOSED: '종료' }
@@ -44,6 +45,7 @@ export function ResponderHomePage() {
 
   return (
     <MobileLayout screenId="USR-001" title="현장 대응" wsConnected={selected ? connected : undefined}>
+      <OfflineOutboxStatus />
       {incidentsQuery.isLoading && <div className="spinner-text">불러오는 중…</div>}
       {incidents.length === 0 && !incidentsQuery.isLoading && (
         <div className="wf-box">현재 배정된 출동이 없습니다.</div>

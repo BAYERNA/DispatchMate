@@ -68,6 +68,7 @@ export class EscalationService implements OnModuleInit, OnModuleDestroy {
         message: `[재알림] ${alert.message ?? '위험정보'} — 발송 후 ${elapsedMinutes}분째 미확인입니다.`,
         sourceType: 'AI',
         escalationOf: alert.alertId,
+        targetUserId: alert.targetUserId,
       })
       alert.escalatedAt = new Date()
       await this.alertRepository.save(alert)

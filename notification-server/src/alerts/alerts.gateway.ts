@@ -50,6 +50,8 @@ export class AlertsGateway implements OnGatewayConnection {
       try {
         const user = await this.authenticate(client);
         if (incidentId) await this.access.require(user, incidentId);
+        const target = (payload as { targetUserId?: string } | null)?.targetUserId;
+        if (target && user.role === 'RESPONDER' && target !== user.userId) return;
         if (client.connected && client.rooms.has(room)) client.emit(event, payload);
       } catch {
         client.disconnect(true);

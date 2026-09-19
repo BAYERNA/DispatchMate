@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { AdminLayout } from '../components/AdminLayout'
 import { StatCard } from '../components/StatCard'
 import { BarChart } from '../components/BarChart'
-import { getStatisticsSummary } from '../api/statistics'
+import { getAiFeedbackStats, getStatisticsSummary } from '../api/statistics'
 
 function formatSeconds(seconds: number | null): string {
   if (seconds == null) return '—'
@@ -22,6 +22,7 @@ const JUDGMENT_TYPE_LABEL: Record<string, string> = {
 // ADM-009 기관 통계 대시보드 (FR-13, FR-27)
 export function StatisticsPage() {
   const query = useQuery({ queryKey: ['statistics-summary'], queryFn: getStatisticsSummary })
+  const feedbackQuery = useQuery({ queryKey: ['ai-feedback-stats'], queryFn: getAiFeedbackStats })
   const data = query.data
 
   return (
@@ -85,6 +86,12 @@ export function StatisticsPage() {
               data={data.judgmentTypeFrequency.map((d) => ({ ...d, label: JUDGMENT_TYPE_LABEL[d.label] ?? d.label }))}
             />
           </div>
+
+          <div className="wf" style={{marginBottom:14}}><div className="wf-header"><span>현장 검토 기반 AI 성능</span></div><div className="wf-body">
+            {feedbackQuery.isError&&<div className="banner error">AI 피드백 통계를 불러오지 못했습니다.</div>}
+            {feedbackQuery.data&&<div className="stat-grid"><StatCard value={feedbackQuery.data.reviewedCount} label="검토 건수"/><StatCard value={feedbackQuery.data.correctPercent==null?'—':`${feedbackQuery.data.correctPercent}%`} label="정확 판정 비율"/><StatCard value={feedbackQuery.data.falsePositiveCount} label="오탐"/><StatCard value={feedbackQuery.data.falseNegativeCount} label="미탐"/></div>}
+            <div className="alert-meta">현장 지휘관이 직접 평가한 건만 집계합니다. 검토 표본이 적으면 모델 전체 성능으로 해석할 수 없습니다.</div>
+          </div></div>
 
           <div className="wf">
             <div className="wf-header">

@@ -49,6 +49,7 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = getStoredToken()
   const response = await fetch(buildUrl(path, options.query), {
+    signal: AbortSignal.timeout(15000),
     method: options.method ?? 'GET',
     headers: {
       'Content-Type': 'application/json',

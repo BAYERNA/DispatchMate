@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { isUUID } from 'class-validator';
@@ -17,6 +17,9 @@ export class IncidentAccessGuard implements CanActivate {
       if (!isUUID(request.params.alertId ?? '')) throw new BadRequestException('잘못된 알림 ID');
       const alert = await this.alerts.findOne({ where: { alertId: request.params.alertId } });
       if (!alert) throw new NotFoundException();
+      if (request.user.role === 'RESPONDER' && alert.targetUserId && alert.targetUserId !== request.user.userId) {
+        throw new ForbiddenException();
+      }
       incidentId = alert.incidentId;
     }
     if (!isUUID(incidentId)) throw new BadRequestException('잘못된 출동 ID');

@@ -1,5 +1,6 @@
 import { apiRequest } from './client'
 import type { IncidentResponse, MonitoringResponse } from '../types'
+import { enqueue,isRetryable } from '../offline/outbox'
 
 export interface ResponderStatusRequest {
   userId: string
@@ -25,6 +26,8 @@ export function getMonitoring(incidentId: string): Promise<MonitoringResponse> {
 }
 
 // FR-03/04/12: 대원 실시간 상태 보고. 실제 웨어러블 연동 전이라 이 화면에서는 수동 입력으로 대체한다.
-export function recordResponderStatus(incidentId: string, request: ResponderStatusRequest): Promise<void> {
-  return apiRequest<void>(`/api/v1/incidents/${incidentId}/responder-status`, { method: 'POST', body: request })
+export async function recordResponderStatus(incidentId: string, request: ResponderStatusRequest): Promise<{queued:boolean}> {
+  const path=`/api/v1/incidents/${incidentId}/responder-status`
+  try { await apiRequest<void>(path, { method: 'POST', body: request }); return {queued:false} }
+  catch(error){if(!isRetryable(error))throw error;enqueue(path,'POST',request);return {queued:true}}
 }

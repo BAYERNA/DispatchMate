@@ -43,6 +43,7 @@ export function TabletLayout({ children, title, screenId, onBack, wsConnected }:
           <button type="button" className="wf-btn small" onClick={() => navigate('/')}>
             출동 목록
           </button>
+          <button type="button" className="wf-btn small" onClick={() => navigate('/training')}>훈련</button>
           <button type="button" className="wf-btn small" onClick={logout}>
             로그아웃
           </button>

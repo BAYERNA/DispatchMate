@@ -7,11 +7,12 @@ import { Alert } from './entities/alert.entity';
 import { IncidentAssignment } from './entities/incident-assignment.entity';
 import { IncidentAccessService } from './incident-access.service';
 import { IncidentAccessGuard } from './incident-access.guard';
+import { DeliveryService } from './delivery.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Alert, IncidentAssignment])],
   controllers: [AlertsController],
-  providers: [AlertsService, AlertsGateway, IncidentAccessService, IncidentAccessGuard],
+  providers: [AlertsService, AlertsGateway, IncidentAccessService, IncidentAccessGuard, DeliveryService],
   exports: [AlertsService, AlertsGateway, IncidentAccessService, IncidentAccessGuard],
 })
 export class AlertsModule {}

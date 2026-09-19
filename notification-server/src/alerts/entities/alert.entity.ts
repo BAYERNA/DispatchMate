@@ -58,4 +58,7 @@ export class Alert {
 
   @Column({ name: 'escalation_of', type: 'uuid', nullable: true })
   escalationOf: string | null;
+
+  @Column({ name: 'client_request_id', type: 'uuid', nullable: true })
+  clientRequestId: string | null;
 }
