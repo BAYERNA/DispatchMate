@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     backend_base_url: str = "http://localhost:8080"
     backend_service_token: Optional[str] = None
     backend_request_timeout_seconds: float = 5.0
+    # Explicit numeric camera IPs only. Empty = deny all remote camera access.
+    camera_allowed_hosts: str = ""
 
     # FR-02 사전분석 — 소방청 공공데이터포털.
     public_data_base_url: str = "https://apis.data.go.kr"

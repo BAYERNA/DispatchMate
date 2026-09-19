@@ -261,6 +261,9 @@ jobs:
 
   docker-smoke-test:
     name: Docker Compose 스모크 테스트
+    env:
+      INTERNAL_WEBHOOK_TOKEN: ci-only-webhook-token-not-for-production
+      INTERNAL_SERVICE_TOKEN: ci-only-callback-token-not-for-production
     runs-on: ubuntu-latest
     # 위의 e2e job은 backend/notification-server를 raw 프로세스로, 3개 프론트엔드는 vite dev
     # server로 띄워서 검증한다 — docker-compose.yml/각 앱의 Dockerfile·nginx.conf는 그 어떤 job도

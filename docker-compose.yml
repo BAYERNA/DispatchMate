@@ -53,6 +53,8 @@ services:
       JWT_SECRET: faind-local-development-secret-key-change-in-production-0123456789
       AI_SERVER_BASE_URL: http://ai-server:8001
       NOTIFICATION_SERVER_BASE_URL: http://notification-server:3001
+      INTERNAL_WEBHOOK_TOKEN: ${INTERNAL_WEBHOOK_TOKEN:?Set INTERNAL_WEBHOOK_TOKEN in the root .env}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?Set INTERNAL_SERVICE_TOKEN in the root .env}
       # 3개 프론트엔드는 각자 nginx 오리진(8081/8082/8083)에서 서빙되는데, 브라우저는 same-origin
       # POST 요청에도 Origin 헤더를 붙인다 — backend 기본값(dev server 포트 5173~5175)만 허용하면
       # Spring Security CORS 필터가 이 요청들을 403으로 막는다. 두 세트 다 허용해야 dev/compose
@@ -72,6 +74,8 @@ services:
     container_name: faind-ai-server
     environment:
       FAIND_BACKEND_BASE_URL: http://backend:8080
+      FAIND_BACKEND_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?Set INTERNAL_SERVICE_TOKEN in the root .env}
+      FAIND_CAMERA_ALLOWED_HOSTS: ${FAIND_CAMERA_ALLOWED_HOSTS:-}
     ports:
       - "8001:8001"
 
@@ -92,6 +96,8 @@ services:
       DB_USERNAME: faind
       DB_PASSWORD: faind
       DB_NAME: faind
+      BACKEND_BASE_URL: http://backend:8080
+      INTERNAL_WEBHOOK_TOKEN: ${INTERNAL_WEBHOOK_TOKEN:?Set INTERNAL_WEBHOOK_TOKEN in the root .env}
       JWT_SECRET: faind-local-development-secret-key-change-in-production-0123456789
     ports:
       - "3001:3001"
@@ -106,6 +112,8 @@ services:
     platform: linux/amd64
     container_name: faind-admin-web
     depends_on:
+      notification-server:
+        condition: service_started
       backend:
         condition: service_healthy
     ports:

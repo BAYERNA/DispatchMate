@@ -104,6 +104,8 @@ describe('EscalationService', () => {
     expect(call.incidentId).toBe('incident-1')
     expect(call.alertType).toBe('RISK_WARNING')
     expect(call.sourceType).toBe('AI')
+    expect(call.escalationOf).toBe('alert-1')
+    expect(alertRepository.find.mock.calls[0][0].where.escalationOf).toBeDefined()
     expect(call.message).toContain('재알림')
     expect(call.message).toContain('2층 붕괴 위험')
 

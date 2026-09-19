@@ -42,7 +42,7 @@ export class EscalationService implements OnModuleInit, OnModuleDestroy {
     // (무한 재알림 방지). 원본을 확인해도 escalatedAt은 그대로 남지만, 그 다음 조회에서 acks가
     // 잡히므로 이미 걸러진다.
     const candidates = await this.alertRepository.find({
-      where: { alertType: 'RISK_WARNING', escalatedAt: IsNull(), sentAt: LessThan(cutoff) },
+      where: { alertType: 'RISK_WARNING', escalatedAt: IsNull(), escalationOf: IsNull(), sentAt: LessThan(cutoff) },
     })
     if (candidates.length === 0) return
 
@@ -67,6 +67,7 @@ export class EscalationService implements OnModuleInit, OnModuleDestroy {
         alertType: 'RISK_WARNING',
         message: `[재알림] ${alert.message ?? '위험정보'} — 발송 후 ${elapsedMinutes}분째 미확인입니다.`,
         sourceType: 'AI',
+        escalationOf: alert.alertId,
       })
       alert.escalatedAt = new Date()
       await this.alertRepository.save(alert)

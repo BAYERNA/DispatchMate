@@ -127,7 +127,7 @@ export interface CameraResponse {
   status: 'NORMAL' | 'WARNING' | 'DISCONNECTED'
 }
 
-export type DangerLevel = 'SAFE' | 'WARNING' | 'DANGER' | 'CRITICAL'
+export type DangerLevel = 'UNKNOWN' | 'SAFE' | 'WARNING' | 'DANGER' | 'CRITICAL'
 
 export interface LiveDangerSnapshot {
   detected: boolean

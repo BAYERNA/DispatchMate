@@ -20,9 +20,7 @@ export class AlertsService {
     return this.alertRepository.find({ where: { incidentId }, order: { sentAt: 'DESC' } });
   }
 
-  // FR-18: 선발대 진입정보 공유. is_comms_lead 권한 확인은 controller가 아니라 이 흐름을 호출하는
-  // 클라이언트(USR-001) 쪽 화면 노출 조건으로 처리한다 — backend의 incident_assignments가 진실
-  // 소스이므로, 엄격한 서버측 재검증이 필요해지면 backend에 조회 API를 추가해 여기서 호출한다.
+  // FR-18: IncidentAccessGuard validates assignment and comms-lead permission before creation.
   async createEntryInfo(incidentId: string, authorId: string, dto: CreateEntryInfoDto): Promise<Alert> {
     const alert = this.alertRepository.create({
       incidentId,
@@ -69,6 +67,7 @@ export class AlertsService {
     alertType: Alert['alertType'];
     message: string;
     sourceType: Alert['sourceType'];
+    escalationOf?: string;
   }): Promise<Alert> {
     const alert = this.alertRepository.create({
       incidentId: params.incidentId,
@@ -77,8 +76,18 @@ export class AlertsService {
       message: params.message,
       sourceType: params.sourceType,
       channel: 'TEXT',
+      escalationOf: params.escalationOf ?? null,
     });
-    return this.saveAndBroadcast(alert);
+    try {
+      return await this.saveAndBroadcast(alert);
+    } catch (error) {
+      // Unique source ID makes retry/crash recovery and multiple workers idempotent.
+      if (params.escalationOf && (error as { code?: string }).code === '23505') {
+        const existing = await this.alertRepository.findOne({ where: { escalationOf: params.escalationOf } });
+        if (existing) return existing;
+      }
+      throw error;
+    }
   }
 
   private async saveAndBroadcast(alert: Alert): Promise<Alert> {

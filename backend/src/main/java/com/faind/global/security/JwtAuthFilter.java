@@ -22,9 +22,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
   private static final String BEARER_PREFIX = "Bearer ";
 
   private final JwtTokenProvider jwtTokenProvider;
+  private final com.faind.domain.auth.repository.UserRepository users;
 
-  public JwtAuthFilter(JwtTokenProvider jwtTokenProvider) {
+  public JwtAuthFilter(JwtTokenProvider jwtTokenProvider, com.faind.domain.auth.repository.UserRepository users) {
     this.jwtTokenProvider = jwtTokenProvider;
+    this.users = users;
   }
 
   @Override
@@ -37,6 +39,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         Claims claims = jwtTokenProvider.parseClaims(token);
         String userId = claims.getSubject();
         String role = claims.get("role", String.class);
+        var user = users.findById(java.util.UUID.fromString(userId)).orElse(null);
+        Number version = claims.get("tokenVersion", Number.class);
+        if (user == null || !"ACTIVE".equals(user.getStatus()) || !user.getRole().equals(role)
+            || user.getTokenVersion() != (version == null ? 0 : version.longValue())) {
+          throw new JwtException("폐기된 세션입니다.");
+        }
         var authentication = new UsernamePasswordAuthenticationToken(
             userId, null, List.of(new SimpleGrantedAuthority("ROLE_" + role)));
         SecurityContextHolder.getContext().setAuthentication(authentication);

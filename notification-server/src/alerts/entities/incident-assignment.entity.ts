@@ -14,4 +14,7 @@ export class IncidentAssignment {
 
   @Column({ name: 'user_id', type: 'uuid' })
   userId: string
+
+  @Column({ name: 'is_comms_lead', type: 'boolean' })
+  isCommsLead: boolean
 }

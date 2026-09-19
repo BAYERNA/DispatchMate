@@ -5,10 +5,14 @@ import { AckModule } from './acknowledgements/ack.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { EscalationModule } from './escalation/escalation.module';
 import { WebhookModule } from './common/webhook/webhook.module';
+import { AuthModule } from './auth/auth.module';
+import { HealthController } from './health.controller';
 
 @Module({
+  controllers: [HealthController],
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    AuthModule,
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({

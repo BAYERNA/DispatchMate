@@ -4,6 +4,9 @@ import { postAiRiskWarning } from '../api/alerts'
 import { buildLiveStreamDebugUrl, buildLiveStreamUrl, getCameras, getLiveDanger } from '../api/devices'
 import { DANGER_CLASS, DANGER_LABEL, DANGER_POLL_INTERVAL_MS, SPREAD_LABEL } from '../dangerDisplay'
 import type { CameraResponse } from '../types'
+import { SecureCamera } from './SecureCamera'
+import { freshDanger } from '../freshDanger'
+import { useNow } from '../useNow'
 
 // 카메라 한 대의 영상 + 위험도 배지. 위험도는 영상 위에 겹쳐 그리지 않는다 — ai-server의
 // /streams/mjpeg(영상)와 /streams/danger(판단)가 애초에 분리된 채널이라 UI도 그 경계를 유지한다.
@@ -14,12 +17,10 @@ function LiveCameraTile({
   incidentId,
   camera,
   failed,
-  onError,
 }: {
   incidentId: string
   camera: CameraResponse
   failed: boolean
-  onError: () => void
 }) {
   const dangerQuery = useQuery({
     queryKey: ['live-danger', camera.deviceId],
@@ -28,7 +29,8 @@ function LiveCameraTile({
     refetchInterval: DANGER_POLL_INTERVAL_MS,
     retry: false,
   })
-  const danger = dangerQuery.data
+  const now = useNow()
+  const danger = freshDanger(dangerQuery.data, dangerQuery.isError, dangerQuery.dataUpdatedAt, now)
   // 디버그 전용 토글 — 기본은 꺼져 있어 운영 화면은 항상 박스 없는 순수 영상이다. 켰을 때만
   // /mjpeg-debug로 바꿔 감지 박스를 확인한다(영상·판단 분리 원칙은 기본값에서 그대로 유지).
   const [showDebugBoxes, setShowDebugBoxes] = useState(false)
@@ -40,6 +42,7 @@ function LiveCameraTile({
 
   useEffect(() => {
     const level = danger?.dangerLevel
+    if (!level || level === 'UNKNOWN') return
     const wasCritical = previousLevelRef.current === 'CRITICAL'
     previousLevelRef.current = level
     if (danger && level === 'CRITICAL' && !wasCritical) {
@@ -57,11 +60,10 @@ function LiveCameraTile({
           영상 연결 실패 — 카메라 전원·네트워크를 확인하세요.
         </div>
       ) : (
-        <img
+        <SecureCamera
           alt={`${camera.serialNo} 실시간 영상${showDebugBoxes ? ' (감지 박스 디버그 보기)' : ''}`}
-          src={showDebugBoxes ? buildLiveStreamDebugUrl(camera.streamUrl!) : buildLiveStreamUrl(camera.streamUrl!)}
+          src={showDebugBoxes ? buildLiveStreamDebugUrl(camera.deviceId) : buildLiveStreamUrl(camera.deviceId)}
           style={{ width: '100%', borderRadius: 6, border: '1px solid var(--color-border-soft)', display: 'block' }}
-          onError={onError}
         />
       )}
       {!failed && (
@@ -75,8 +77,9 @@ function LiveCameraTile({
           {danger ? (
             <>
               <span className={`tag ${DANGER_CLASS[danger.dangerLevel] ?? ''}`}>
-                {DANGER_LABEL[danger.dangerLevel] ?? danger.dangerLevel} · {Math.round(danger.dangerScore)}
+                {DANGER_LABEL[danger.dangerLevel] ?? '판단 불가'}{danger.dangerLevel !== 'UNKNOWN' && ` · ${Math.round(danger.dangerScore)}`}
               </span>
+              {danger.dangerLevel === 'UNKNOWN' && <span role="status">{danger.reason ?? '분석할 수 없습니다.'}</span>}
               {danger.growthRatio != null && danger.growthRatio > 1 && (
                 <span style={{ color: 'var(--color-ink-soft)' }}>
                   확산 {danger.growthRatio.toFixed(1)}배
@@ -167,7 +170,6 @@ export function LiveCameraPanel({ incidentId }: { incidentId: string }) {
                 incidentId={incidentId}
                 camera={camera}
                 failed={failedIds.includes(camera.deviceId)}
-                onError={() => setFailedIds((prev) => (prev.includes(camera.deviceId) ? prev : [...prev, camera.deviceId]))}
               />
             ))}
           </div>
