@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { HealthController } from './health.controller';
 import { OperationsModule } from './operations/operations.module';
 import { MissionModule } from './mission/mission.module';
+import { AdvancedOperationsModule } from './advanced-operations/advanced-operations.module';
 
 @Module({
   controllers: [HealthController],
@@ -22,7 +23,7 @@ import { MissionModule } from './mission/mission.module';
         host: config.get<string>('DB_HOST', 'localhost'),
         port: config.get<number>('DB_PORT', 5432),
         username: config.get<string>('DB_USERNAME', 'faind'),
-        password: config.get<string>('DB_PASSWORD', 'faind'),
+        password: config.get<string>('DB_PASSWORD'),
         database: config.get<string>('DB_NAME', 'faind'),
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
         // backend(Java)의 Flyway가 스키마를 소유한다 — Node는 절대 스키마를 동기화/변경하지 않는다.
@@ -35,6 +36,7 @@ import { MissionModule } from './mission/mission.module';
     EscalationModule,
     OperationsModule,
     MissionModule,
+    AdvancedOperationsModule,
   ],
 })
 export class AppModule {}

@@ -73,7 +73,7 @@ docker compose exec -T postgres psql -U faind -d faind < scripts/seed-e2e-accoun
 | 지휘관 | http://localhost:8082 | `E2E-COMMANDER` |
 | 대원 | http://localhost:8083 | `E2E-RESPONDER` |
 
-테스트 비밀번호는 세 계정 모두 `Test1234!`입니다. 운영 계정이 아니며 외부 공개 환경에서
+테스트 비밀번호는 시드 스크립트에 정의된 데모 전용 값입니다. 실행 전 로컬 정책에 맞게 바꾸고, 외부 공개 환경에서
 사용하면 안 됩니다. 신규 DB에서는 계정만 생성되므로 출동·장비 목록이 비어 있을 수 있습니다.
 중지할 때는 `docker compose down`을 사용하면 DB 볼륨은 보존됩니다.
 `docker compose down -v`는 DB 데이터를 삭제하므로 주의하세요.
@@ -100,7 +100,7 @@ cd backend
 
 기본 접속 정보(로컬 개발용, `application.yml` 참조):
 
-- DB: `jdbc:postgresql://localhost:5432/faind` (user/password: `faind`/`faind`)
+- DB: `jdbc:postgresql://localhost:5432/faind` (사용자와 비밀번호는 로컬 환경변수로 설정)
 - Redis: `localhost:6379`
 - 서버: `http://localhost:8080` (Swagger UI: `/swagger-ui.html`)
 
@@ -241,7 +241,7 @@ CI의 AI 의존성 점검은 정보성이고 npm 점검은 critical 기준이므
   Java 송신부도 Bearer 토큰을 전달하며, 토큰 미설정 시 인증을 생략하지 않습니다.
 - 공개 배포 전 TLS, 서비스 간 네트워크 격리, 외부 API 및 의존성 취약점 점검을 별도로 수행하세요.
   `/pre-analysis`, `/sop-match`는 내부 서비스용이며 공개망에 노출하지 마세요.
-- 실제 PostgreSQL에서 V7~V10 마이그레이션·계정 무효화·재알림/오프라인 명령 중복 방지 및 실제 카메라·SMS·음성·기관 연동을 검증하세요.
+- 실제 PostgreSQL에서 V7~V11 마이그레이션·계정 무효화·재알림/오프라인 명령 중복 방지 및 실제 카메라·SMS·음성·기관 연동을 검증하세요.
 
 ## 이번 변경 및 호환성
 
@@ -279,7 +279,7 @@ CI의 AI 의존성 점검은 정보성이고 npm 점검은 critical 기준이므
 
 새 API는 `POST /incidents/:incidentId/alerts/receipts` (`{ "alertIds": ["UUID"] }`)와
 `GET /incidents/:incidentId/alerts/delivery-status`입니다. 브라우저에서는 `/notify` 프록시를 사용합니다.
-배포 시 **backend Flyway V8~V10을 먼저 적용**한 뒤 알림 서버와 프론트를 갱신하세요.
+배포 시 **backend Flyway V8~V11을 먼저 적용**한 뒤 알림 서버와 프론트를 갱신하세요.
 구버전 알림 서버와의 혼합 운영, 실제 PostgreSQL의 동시 세션 잠금, 전체 서비스 E2E는 별도 검증이 필요합니다.
 기존 10분 미확인 위험경고의 1회 재알림 정책은 유지합니다. 대상자 중 일부만 확인한 경우의 추가 재알림 정책은 포함하지 않습니다.
 
@@ -344,5 +344,18 @@ cd notification-server
 npm run build
 PGLITE_ROOT=/tmp/dispatchmate-db-check/node_modules/@electric-sql/pglite node test/delivery-database.mjs
 ```
+
+### V11 현장 안전·운영 인텔리전스
+
+- **MAYDAY·PAR:** 대원 원터치 긴급신호, 지휘 확인 전 반복 경보, 30~1800초 인원점검과 미응답 자동 위험신호를 제공합니다.
+- **영속 작업 큐·푸시:** PUSH/SMS/VOICE/기관 전송은 `durable_jobs`에서 멱등 키, 지수 백오프, 최대 재시도와 DEAD 상태를 관리합니다. `PUSH_GATEWAY_URL`은 FCM/APNs/Web Push 중계 어댑터 주소입니다.
+- **경로·실내 위치:** GPS 경로·ETA와 위험요소, BLE/UWB/GPS/수동 위치를 저장합니다. 내장 ETA는 직선거리 기반 참고값이며 실제 도로 통제 경로는 외부 라우팅 연동이 필요합니다.
+- **장비·의료:** QR/RFID 장비 생명주기와 반출 스캔, 병원 수용상태와 환자 인계 데이터를 연결합니다.
+- **권한·전술 보드:** 현장 역할별 권한 표, HOT/WARM/COLD/STAGING/TRIAGE 구역과 우선순위 목표를 제공합니다.
+- **사후분석·훈련:** 사건 이벤트, 알림 지연, SOP 누락, MAYDAY를 요약하고 실제 사건을 분리된 훈련 세션으로 복제합니다.
+- **AI 드리프트·디지털 트윈:** 7일 현장 피드백의 오탐·미탐 비율을 스냅샷으로 남기고, 연기·열·대피 훈련용 단순 모의를 저장합니다. 모의값은 실제 안전 판단에 사용할 수 없습니다.
+- **관측성·복구:** 작업 큐, MAYDAY, PAR, 앱 수신 지연, AI 드리프트, 복구검증 상태를 관리자 화면에서 확인합니다. `scripts/run-recovery-cycle.sh`는 백업·선택적 격리 DB 복구시험·보존대상 출력을 수행합니다.
+
+외부 푸시, 도로 라우팅, BLE/UWB, RFID 리더, 병원 시스템은 공급자별 계약이 없으므로 고정 설정 어댑터와 실패 상태까지만 제공합니다. URL·토큰·장비가 없으면 성공으로 처리하지 않습니다. V11 적용 후 새 알림 서버와 세 프론트엔드를 함께 배포하세요.
 
 2026-09-19 코드 점검의 근거, 재현 결과, 미검증 범위는 [CODE_REVIEW.md](CODE_REVIEW.md)를 참고하세요.

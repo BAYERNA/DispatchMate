@@ -1,0 +1,11 @@
+import { notifyRequest } from './client'
+export const getAdvanced=(id:string)=>notifyRequest<any>(`/incidents/${id}/advanced-operations`)
+export const maydayStatus=(id:string,status:string)=>notifyRequest(`/mayday/${id}/status`,{method:'PATCH',body:{status}})
+export const startPar=(id:string)=>notifyRequest(`/incidents/${id}/par`,{method:'POST',body:{deadlineSeconds:120}})
+export const addRoute=(id:string,body:unknown)=>notifyRequest(`/incidents/${id}/routes`,{method:'POST',body})
+export const addZone=(id:string,body:unknown)=>notifyRequest(`/incidents/${id}/tactical-zones`,{method:'POST',body})
+export const addObjective=(id:string,body:unknown)=>notifyRequest(`/incidents/${id}/objectives`,{method:'POST',body})
+export const objectiveStatus=(id:string,status:string)=>notifyRequest(`/objectives/${id}/status`,{method:'PATCH',body:{status}})
+export const afterAction=(id:string)=>notifyRequest(`/incidents/${id}/after-action`,{method:'POST'})
+export const trainingFromIncident=(id:string)=>notifyRequest(`/incidents/${id}/training-from-incident`,{method:'POST',body:{}})
+export const runTwin=(id:string)=>notifyRequest(`/incidents/${id}/digital-twin`,{method:'POST',body:{scenario:'SMOKE',inputs:{elapsedSeconds:300,windMps:1}}})

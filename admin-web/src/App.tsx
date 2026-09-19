@@ -11,6 +11,7 @@ import { DeviceListPage } from './pages/DeviceListPage'
 import { CctvMonitorPage } from './pages/CctvMonitorPage'
 import { StatisticsPage } from './pages/StatisticsPage'
 import { OperationsReadinessPage } from './pages/OperationsReadinessPage'
+import { OperationalIntelligencePage } from './pages/OperationalIntelligencePage'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -27,6 +28,7 @@ export default function App() {
               path="/operations"
               element={<RequireAuth><OperationsReadinessPage /></RequireAuth>}
             />
+            <Route path="/intelligence" element={<RequireAuth><OperationalIntelligencePage /></RequireAuth>} />
             <Route
               path="/initial-password"
               element={

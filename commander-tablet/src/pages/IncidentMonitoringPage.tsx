@@ -12,6 +12,7 @@ import { IncidentTimeline } from '../components/IncidentTimeline'
 import { OperationsMap } from '../components/OperationsMap'
 import { AiFeedbackPanel } from '../components/AiFeedbackPanel'
 import { MissionControlPanel } from '../components/MissionControlPanel'
+import { AdvancedCommandPanel } from '../components/AdvancedCommandPanel'
 import { CloseConfirmDialog } from '../components/CloseConfirmDialog'
 import { closeIncident, getAiJudgments, getMonitoring, reassignCommsLead } from '../api/incidents'
 import { getAccount } from '../api/accounts'
@@ -216,6 +217,7 @@ export function IncidentMonitoringPage() {
               <AiFeedbackPanel judgments={judgments}/>
               <IncidentTimeline incidentId={incidentId}/>
               <MissionControlPanel incidentId={incidentId} assignments={data.assignments}/>
+              <AdvancedCommandPanel incidentId={incidentId}/>
             </div>
           </div>
         </>
