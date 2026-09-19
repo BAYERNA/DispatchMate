@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { addRetentionPolicy, getGovernance, startRecoveryRun, verifyAudit } from '../api/governance'
+import { addRetentionPolicy, approveRetention, deviceAction, executeRetention, getAssurance, getGovernance, previewRetention, resetCircuit, startRecoveryRun, verifyAudit } from '../api/governance'
 import { AdminLayout } from '../components/AdminLayout'
 import { StatCard } from '../components/StatCard'
 
 export function GovernancePage() {
   const client = useQueryClient()
   const dashboard = useQuery({ queryKey: ['governance'], queryFn: getGovernance, refetchInterval: 30_000 })
+  const assurance = useQuery({ queryKey: ['assurance'], queryFn: getAssurance, refetchInterval: 30_000 })
   const [result, setResult] = useState('')
   const mutation = useMutation({
     mutationFn: async ({ kind }: { kind: 'audit' | 'retention' | 'chaos' }) => {
@@ -21,6 +22,9 @@ export function GovernancePage() {
     onError: (error) => setResult(error instanceof Error ? error.message : '작업 실패'),
   })
   const data = dashboard.data
+  const production = assurance.data
+  const retention = useMutation({ mutationFn: ({ action, id }: { action: 'preview' | 'approve' | 'execute'; id: string }) => action === 'preview' ? previewRetention(id) : action === 'approve' ? approveRetention(id) : executeRetention(id), onSuccess: value => { setResult(JSON.stringify(value)); void client.invalidateQueries({ queryKey: ['assurance'] }) }, onError: error => setResult(error instanceof Error ? error.message : '작업 실패') })
+  const assuranceAction = useMutation({ mutationFn: ({ kind, id, action }: { kind: 'device' | 'circuit'; id: string; action?: 'VERIFY' | 'REVOKE' | 'REMOTE_WIPE' }) => kind === 'device' ? deviceAction(id, action!) : resetCircuit(id), onSuccess: value => { setResult(JSON.stringify(value)); void client.invalidateQueries({ queryKey: ['assurance'] }) }, onError: error => setResult(error instanceof Error ? error.message : '작업 실패') })
   return <AdminLayout screenId="ADM-GOV" title="복원력·보안·데이터 거버넌스">
     <div className="stat-grid">
       <StatCard value={data?.auditEvents ?? 0} label="불변 감사 이벤트" />
@@ -34,6 +38,29 @@ export function GovernancePage() {
         <div>Secret provider: <strong>{data?.security.secretProvider ?? '확인 중'}</strong></div>
         <div className="alert-meta">외부 비밀 관리자 {data?.security.externalSecretManagerConfigured ? '연결됨' : '미연결'} · mTLS {data?.security.mtlsConfigured ? '설정됨' : '미설정'} · Fail-closed {data?.security.failClosed ? '활성' : '비활성'}</div>
         {data?.security.warnings.map(warning => <div className="alert-meta" key={warning}>⚠ {warning}</div>)}
+      </div>
+    </section>
+    <section className="wf" style={{ marginTop: 14 }}>
+      <div className="wf-header"><span>실행 가능한 개인정보 보존정책</span></div>
+      <div className="wf-body">
+        {(production?.retentionPolicies ?? []).map(policy => <div className="assignment-row" key={policy.policyId}><span>{policy.dataCategory} · {policy.retentionDays}일 · {policy.action}{policy.legalHold ? ' · 법적 보존' : ''}</span><button className="wf-btn small" disabled={!policy.enabled || policy.legalHold} onClick={() => retention.mutate({ action: 'preview', id: policy.policyId })}>미리보기</button></div>)}
+        {(production?.retention ?? []).map(execution => <div className="assignment-row" key={execution.executionId}><span>{execution.status} · 후보 {execution.candidateCount}건 · 실행 {execution.executedCount}건</span>{execution.status === 'PREVIEW' && <button className="wf-btn small" onClick={() => retention.mutate({ action: 'approve', id: execution.executionId })}>다른 관리자 승인</button>}{execution.status === 'APPROVED' && <button className="wf-btn small primary" onClick={() => retention.mutate({ action: 'execute', id: execution.executionId })}>정책 실행</button>}</div>)}
+        <div className="alert-meta">미리보기를 만든 관리자와 다른 관리자가 승인해야 합니다. ARCHIVE는 외부 WORM 검증 전 실행되지 않습니다.</div>
+      </div>
+    </section>
+    <section className="wf" style={{ marginTop: 14 }}>
+      <div className="wf-header"><span>SLO·외부 공급자·인증서</span></div>
+      <div className="wf-body">
+        {(production?.slo ?? []).map(item => <div key={item.metricKey}>{item.name}: {item.actualRatio == null ? '표본 없음' : `${(item.actualRatio * 100).toFixed(2)}%`} / 목표 {(item.targetRatio * 100).toFixed(2)}%</div>)}
+        {(production?.circuits ?? []).map(item => <div className="assignment-row" key={item.providerKey}><span>{item.providerKey} · {item.state} · 연속 실패 {item.consecutiveFailures}</span>{item.state === 'OPEN' && <button className="wf-btn small" onClick={() => assuranceAction.mutate({ kind: 'circuit', id: item.providerKey })}>시험 복구</button>}</div>)}
+        {(production?.certificates ?? []).map(item => <div className="alert-meta" key={item.serviceName}>{item.serviceName} 인증서 · {new Date(item.notAfter).toLocaleDateString()} 만료 · {item.source}</div>)}
+        <div className="alert-meta">현장 기기 검증 {production?.fieldDevices.verified ?? 0}/{production?.fieldDevices.total ?? 0} · 승인 대기 {production?.pendingApprovals ?? 0}</div>
+      </div>
+    </section>
+    <section className="wf" style={{ marginTop: 14 }}>
+      <div className="wf-header"><span>현장 기기 검증·원격 폐기</span></div>
+      <div className="wf-body">
+        {(production?.deviceList ?? []).map(device => <div className="assignment-row" key={device.deviceRegistrationId}><span>{device.platform} · {device.attestationStatus} · {device.encryptionCapability ?? '암호화 미확인'}</span><span>{device.attestationStatus === 'PENDING' && <button className="wf-btn small" onClick={() => assuranceAction.mutate({ kind: 'device', id: device.deviceRegistrationId, action: 'VERIFY' })}>검증</button>}<button className="wf-btn small" onClick={() => assuranceAction.mutate({ kind: 'device', id: device.deviceRegistrationId, action: 'REMOTE_WIPE' })}>원격 폐기 요청</button></span></div>)}
       </div>
     </section>
     <section className="wf" style={{ marginTop: 14 }}>

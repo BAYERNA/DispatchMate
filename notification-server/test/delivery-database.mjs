@@ -18,6 +18,7 @@ const { MissionService } = require('../dist/mission/mission.service.js');
 const { AutomationService } = require('../dist/mission/automation.service.js');
 const { AdvancedOperationsService } = require('../dist/advanced-operations/advanced-operations.service.js');
 const { GovernanceService } = require('../dist/governance/governance.service.js');
+const { AssuranceService } = require('../dist/assurance/assurance.service.js');
 const db = new PGlite({ extensions: { pgcrypto } });
 const migrations = new URL('../../backend/src/main/resources/db/migration/', import.meta.url);
 const rows = async (sql, args = []) => (await db.query(sql, args)).rows;
@@ -45,6 +46,7 @@ try {
   await db.exec(await readFile(new URL('V10__mission_control_and_operational_readiness.sql', migrations), 'utf8'));
   await db.exec(await readFile(new URL('V11__field_safety_and_operational_intelligence.sql', migrations), 'utf8'));
   await db.exec(await readFile(new URL('V12__resilience_governance_and_federation.sql', migrations), 'utf8'));
+  await db.exec(await readFile(new URL('V13__production_assurance_and_policy_execution.sql', migrations), 'utf8'));
   const delivery = new DeliveryService({ query: rows });
   const operator = {userId:uuid(99),role:'COMMANDER'};
   const user = {userId:a,role:'RESPONDER'};
@@ -109,6 +111,8 @@ try {
   const operations=new OperationsService({query:rows});
   const commanderUser={userId:commander,badgeNumber:'0090',role:'COMMANDER'};
   const adminUser={userId:admin,badgeNumber:'0091',role:'ADMIN'};
+  const secondAdmin=uuid(92);await rows(`INSERT INTO users(user_id,name,role,badge_number,password_hash,status) VALUES($1,'보안관리자','ADMIN','0092','test','ACTIVE')`,[secondAdmin]);
+  const secondAdminUser={userId:secondAdmin,badgeNumber:'0092',role:'ADMIN'};
   const training=await operations.createTraining(commanderUser,'지하 화재 훈련','FIRE');
   await operations.trainingAction(training.trainingId,commanderUser,'START');
   await operations.trainingAction(training.trainingId,commanderUser,'EVENT','통신 음영 발생');
@@ -167,5 +171,20 @@ try {
   await governance.buildingModel(adminUser,{facilityName:'훈련동',modelFormat:'IFC',version:'1',sourceUri:'bim://training/1',contentHash:'d'.repeat(64)});await governance.transcript(incident,commanderUser,{channelLabel:'지휘망',transcript:'2층 수색 완료',startedAt:new Date().toISOString()});checks++;
   const publicToken=await governance.createPublicToken(incident,commanderUser,{audience:'PUBLIC',ttlMinutes:10});const publicView=await governance.publicStatus(publicToken.token);assert.equal(publicView.status,'IN_PROGRESS');assert.equal(publicView.location,undefined);checks++;
   await governance.preferences(responderUser,{locale:'ko-KR',highContrast:true,textScale:1.25,roleLayout:{compact:true}});await governance.retention(adminUser,{dataCategory:'radio_transcript',retentionDays:180,action:'ANONYMIZE'});checks++;
+  const assurance=new AssuranceService(missionRepo);
+  await rows(`INSERT INTO push_subscriptions(user_id,platform,endpoint_token) VALUES($1,'WEB','test-endpoint')`,[a]);
+  const originalFetch=global.fetch;let fetchAttempts=0;global.fetch=async()=>{fetchAttempts++;throw new Error('provider down')};
+  const providerAutomation=new AutomationService(missionRepo,{createFromSystem:async value=>value},{get:key=>key==='PUSH_GATEWAY_URL'?'http://gateway.test':undefined});
+  for(let i=0;i<5;i++) await assert.rejects(()=>providerAutomation.deliver('PUSH',{userId:a,message:'test',alertId:broadcast}));
+  assert.equal((await rows(`SELECT state FROM provider_circuit_breakers WHERE provider_key='PUSH'`))[0].state,'OPEN');
+  await assert.rejects(()=>providerAutomation.deliver('PUSH',{userId:a,message:'test',alertId:broadcast}));assert.equal(fetchAttempts,5);global.fetch=originalFetch;checks++;
+  const retentionPolicy=(await rows(`SELECT policy_id FROM data_retention_policies WHERE data_category='location_history'`))[0];
+  await rows(`UPDATE indoor_position_updates SET recorded_at=now()-interval '100 days' WHERE incident_id=$1`,[incident]);
+  const preview=await assurance.previewRetention(retentionPolicy.policy_id,adminUser);assert.ok(preview.candidateCount>=1);await assert.rejects(()=>assurance.approveRetention(preview.executionId,adminUser));await assurance.approveRetention(preview.executionId,secondAdminUser);const executed=await assurance.executeRetention(preview.executionId,adminUser);assert.ok(executed.executedCount>=1);checks++;
+  await assurance.recordSlo(adminUser,{metricKey:'api_availability',goodCount:99,totalCount:100,dimensions:{region:'test'}});const slo=await assurance.sloDashboard(adminUser);assert.ok(slo.some(item=>item.metricKey==='api_availability'));checks++;
+  const approval=await assurance.requestApproval(adminUser,{actionType:'FAILOVER',resourceType:'environment',resourceId:'staging',payload:{reason:'drill'}});await assert.rejects(()=>assurance.decideApproval(approval.approvalId,adminUser,'APPROVED'));assert.equal((await assurance.decideApproval(approval.approvalId,secondAdminUser,'APPROVED')).status,'APPROVED');checks++;
+  const device=await assurance.fieldDevice(responderUser,{platform:'ANDROID',deviceFingerprint:'test-device-001',encryptionCapability:'HARDWARE_KEYSTORE',backgroundLocationEnabled:true});assert.equal(device.attestationStatus,'PENDING');const asset=await assurance.offlineAsset(responderUser,{assetId:uuid(400),incidentId:incident,mediaType:'image/jpeg',byteSize:1024,contentHash:'e'.repeat(64),priority:1});assert.equal(asset.priority,1);checks++;
+  const manifest=await assurance.auditExport(adminUser,{artifactUri:'worm://audit/export-1',artifactHash:'f'.repeat(64)});assert.ok(manifest.eventCount>=1);checks++;
+  const oldModel=await governance.registerModel(adminUser,{modelName:'fire-detection',version:'1.0',artifactUri:'registry://fire/1.0',artifactHash:'1'.repeat(64)});await governance.modelAction(oldModel.releaseId,adminUser,'APPROVE');await governance.modelAction(oldModel.releaseId,adminUser,'ACTIVATE');const newModel=await governance.registerModel(adminUser,{modelName:'fire-detection',version:'2.0',artifactUri:'registry://fire/2.0',artifactHash:'2'.repeat(64)});await governance.modelAction(newModel.releaseId,adminUser,'APPROVE');await governance.modelAction(newModel.releaseId,adminUser,'ACTIVATE');await assurance.guardrail(adminUser,{modelName:'fire-detection',minimumSamples:20,maxFalsePositiveRate:.25,maxFalseNegativeRate:.2,autoRollback:true});await providerAutomation.rollbackDriftedModel('fire-detection',25,.4,.1);assert.equal((await rows(`SELECT version FROM ai_model_releases WHERE model_name='fire-detection' AND status='ACTIVE'`))[0].version,'1.0');checks++;
   console.log(`PASS: ${checks} operations database scenarios (PGlite; production PostgreSQL/Flyway still require verification)`);
 } finally { await db.close(); }

@@ -241,7 +241,7 @@ CI의 AI 의존성 점검은 정보성이고 npm 점검은 critical 기준이므
   Java 송신부도 Bearer 토큰을 전달하며, 토큰 미설정 시 인증을 생략하지 않습니다.
 - 공개 배포 전 TLS, 서비스 간 네트워크 격리, 외부 API 및 의존성 취약점 점검을 별도로 수행하세요.
   `/pre-analysis`, `/sop-match`는 내부 서비스용이며 공개망에 노출하지 마세요.
-- 실제 PostgreSQL에서 V7~V12 마이그레이션·계정 무효화·재알림/오프라인 명령 중복 방지 및 실제 카메라·SMS·음성·기관 연동을 검증하세요.
+- 실제 PostgreSQL에서 V7~V13 마이그레이션·계정 무효화·재알림/오프라인 명령 중복 방지 및 실제 카메라·SMS·음성·기관 연동을 검증하세요.
 
 ## 이번 변경 및 호환성
 
@@ -279,7 +279,7 @@ CI의 AI 의존성 점검은 정보성이고 npm 점검은 critical 기준이므
 
 새 API는 `POST /incidents/:incidentId/alerts/receipts` (`{ "alertIds": ["UUID"] }`)와
 `GET /incidents/:incidentId/alerts/delivery-status`입니다. 브라우저에서는 `/notify` 프록시를 사용합니다.
-배포 시 **backend Flyway V8~V12를 먼저 적용**한 뒤 알림 서버와 프론트를 갱신하세요.
+배포 시 **backend Flyway V8~V13을 먼저 적용**한 뒤 알림 서버와 프론트를 갱신하세요.
 구버전 알림 서버와의 혼합 운영, 실제 PostgreSQL의 동시 세션 잠금, 전체 서비스 E2E는 별도 검증이 필요합니다.
 기존 10분 미확인 위험경고의 1회 재알림 정책은 유지합니다. 대상자 중 일부만 확인한 경우의 추가 재알림 정책은 포함하지 않습니다.
 
@@ -358,7 +358,7 @@ PGLITE_ROOT=/tmp/dispatchmate-db-check/node_modules/@electric-sql/pglite node te
 
 Web Push는 대원 화면의 “종료 상태 푸시 활성화”에서 서비스 워커를 등록합니다. 빌드 시 `VITE_WEB_PUSH_PUBLIC_KEY`가 필요합니다. Prometheus 스크레이퍼는 인증 토큰과 함께 `GET /operations/metrics/prometheus`를 호출할 수 있습니다. 외부 계약 전에는 `node scripts/mock-operations-gateway.mjs` 또는 `scripts/test-mock-gateway.sh`로 PUSH/SMS/음성/기관/경로 어댑터 형식을 점검합니다.
 
-외부 푸시, 도로 라우팅, BLE/UWB, RFID 리더, 병원 시스템은 공급자별 계약이 없으므로 고정 설정 어댑터와 실패 상태까지만 제공합니다. URL·토큰·장비가 없으면 성공으로 처리하지 않습니다. V12 적용 후 새 알림 서버와 세 프론트엔드를 함께 배포하세요.
+외부 푸시, 도로 라우팅, BLE/UWB, RFID 리더, 병원 시스템은 공급자별 계약이 없으므로 고정 설정 어댑터와 실패 상태까지만 제공합니다. URL·토큰·장비가 없으면 성공으로 처리하지 않습니다. V13 적용 후 새 알림 서버와 세 프론트엔드를 함께 배포하세요.
 
 ### V12 복원력·거버넌스·연합 운영
 
@@ -387,6 +387,32 @@ CHAOS_TARGET_ENVIRONMENT=staging CHAOS_APPROVED=true \
   CHAOS_SCENARIO=gateway-timeout ./scripts/run-chaos-drill.sh
 ```
 
-V12의 실제 Vault/KMS 조회, mTLS handshake, BIM 렌더러, 음성 인식 공급자, 전자서명 공개키 검증, 보존정책 실행 워커, 연합기관 인증서 교환, 네이티브 기기 기능은 외부 인프라/계약/키가 있어야 완료됩니다. 설정이 없을 때 연결 성공으로 표시하지 않습니다.
+V12의 실제 Vault/KMS 조회, mTLS handshake, BIM 렌더러, 음성 인식 공급자, 전자서명 공개키 검증, 연합기관 인증서 교환, 네이티브 기기 기능은 외부 인프라/계약/키가 있어야 완료됩니다. 설정이 없을 때 연결 성공으로 표시하지 않습니다.
+
+### V13 운영 보증·정책 실행
+
+- **개인정보 보존정책 실행:** 위치 기록 삭제와 무전 전사 익명화는 후보 미리보기, 표본 확인, 작성자와 다른 관리자의 승인 후에만 실행됩니다. 법적 보존 정책은 실행을 거부하며 증거·감사자료의 `ARCHIVE`는 외부 WORM 보관 검증 없이는 완료하지 않습니다.
+- **공급자 회로 차단기:** PUSH/SMS/VOICE/기관 연동이 연속 5회 실패하면 2분간 `OPEN`으로 전환하고 호출을 차단합니다. 이후 `HALF_OPEN` 시험 호출이 성공해야 닫히며 관리자는 시험 복구만 요청할 수 있습니다.
+- **mTLS·외부 비밀 주입:** `REQUIRE_PROVIDER_MTLS=true`이면 HTTPS와 client certificate/key/CA가 모두 없을 때 공급자 호출을 거부합니다. Vault Agent·KMS sidecar는 `MULTICHANNEL_TOKEN_FILE`, `INTERAGENCY_TOKEN_FILE` 경로로 회전된 비밀을 주입할 수 있고 외부 공급자 모드에서 파일이 없으면 fail-closed 처리합니다.
+- **SLO와 오류 예산 입력:** 30초 내 알림 전달, 60초 내 MAYDAY 확인, 핵심 API 가용성의 목표와 측정치를 저장합니다. 자동화 워커가 5분 단위 측정치를 추가하고 관리 화면은 목표 대비 실제 비율을 표시합니다.
+- **AI 자동 보호:** 모델별 최소 표본, 오탐·미탐 한계와 자동 롤백 여부를 저장합니다. 정책이 활성화되고 실제 드리프트가 한계를 넘을 때만 이전 릴리스를 다시 활성화하며, 대체 릴리스가 없으면 현재 모델을 임의로 제거하지 않습니다.
+- **2인 승인·임시 권한:** failover 같은 특권 작업은 요청자와 다른 관리자가 30분 안에 승인해야 합니다. 사건별 임시 권한은 목적과 만료시간을 필수로 기록하고 즉시 철회할 수 있습니다.
+- **관리형 현장 기기:** 대원 앱은 기기 지문과 WebCrypto 기능을 등록합니다. 관리자는 attestation 검증·폐기와 원격 폐기 요청을 기록합니다. 웹 구현은 MDM/OS 원격 삭제를 직접 수행하지 않으므로 네이티브 플랫폼 연결 전에는 요청 상태만 신뢰해야 합니다.
+- **오프라인 첨부 계약:** 암호화 방식, 해시, 크기, 우선순위를 가진 첨부 manifest를 멱등 등록합니다. MAYDAY 관련 첨부는 우선순위 1로 전송하도록 네이티브 업로더가 이 계약을 사용합니다.
+- **감사 WORM manifest:** hash-chain 범위, head hash, 외부 artifact URI와 SHA-256을 기록해 외부 WORM 복제를 검증할 수 있습니다. 저장소 자체가 WORM 스토리지를 대신하지 않습니다.
+- **인증서 인벤토리:** 서비스별 인증서 fingerprint, 발급자와 만료일을 기록합니다. `scripts/check-certificate-expiry.sh`로 배포 인증서가 지정 기간 안에 만료되는지 차단할 수 있습니다.
+
+CI는 V1~V13 마이그레이션과 51개 DB·정책 시나리오, Compose 설정, 셸 문법 및 운영 환경 Chaos 차단을 검증합니다.
+
+```bash
+# 로컬 운영 보증 검사
+PGLITE_ROOT=/tmp/dispatchmate-db-check/node_modules/@electric-sql/pglite \
+  ./scripts/verify-production-assurance.sh
+
+# 인증서 30일 만료 경고
+CERTIFICATE_WARNING_DAYS=30 ./scripts/check-certificate-expiry.sh certs/service.pem
+```
+
+실제 네이티브 백그라운드 위치·Secure Enclave/Android Keystore, MDM 원격 삭제, WORM 업로드, Vault/KMS의 플랫폼별 인증·비밀 생성, 인증서 자동 발급·회전, 음성 인식, BIM 렌더링은 플랫폼별 공급자가 필요합니다. V13은 sidecar/file 주입과 실제 mTLS 전송 경로를 제공하지만, 외부 플랫폼이 연결되기 전 성공 상태를 만들지 않고 `PENDING`, `미설정` 또는 명시적 실패로 유지합니다.
 
 2026-09-19 코드 점검의 근거, 재현 결과, 미검증 범위는 [CODE_REVIEW.md](CODE_REVIEW.md)를 참고하세요.

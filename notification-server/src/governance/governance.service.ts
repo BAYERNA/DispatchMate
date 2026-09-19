@@ -79,6 +79,7 @@ export class GovernanceService {
       secretProvider,
       externalSecretManagerConfigured: ['vault', 'aws-kms', 'gcp-kms', 'azure-key-vault'].includes(secretProvider),
       mtlsConfigured: mtls,
+      mtlsRequired: this.config.get<string>('REQUIRE_PROVIDER_MTLS', 'false') === 'true',
       failClosed: this.config.get<string>('SECURITY_FAIL_CLOSED', 'true') === 'true',
       warnings: [!mtls && '서비스 간 mTLS 인증서 경로가 설정되지 않았습니다.', secretProvider === 'env' && '운영 환경에서는 Vault/KMS 계열 공급자를 사용하세요.'].filter(Boolean),
     };
