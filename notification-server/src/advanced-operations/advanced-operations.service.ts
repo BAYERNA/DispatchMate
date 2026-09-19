@@ -207,6 +207,29 @@ export class AdvancedOperationsService {
     return { ...jobs[0], ...signals[0], ...par[0], ...latency[0], latestDrift: drift[0] ?? null, latestRecovery: recovery[0] ?? null, uptimeSeconds: Math.round(process.uptime()) };
   }
 
+  async prometheus(user: AuthenticatedUser) {
+    const m = await this.metrics(user);
+    return [
+      '# HELP dispatchmate_durable_jobs Number of durable delivery jobs.',
+      '# TYPE dispatchmate_durable_jobs gauge',
+      `dispatchmate_durable_jobs{state="queued"} ${m.queuedJobs}`,
+      `dispatchmate_durable_jobs{state="failed"} ${m.failedJobs}`,
+      '# HELP dispatchmate_active_maydays Active or acknowledged emergency signals.',
+      '# TYPE dispatchmate_active_maydays gauge',
+      `dispatchmate_active_maydays ${m.activeMaydays}`,
+      '# HELP dispatchmate_expired_par Expired personnel accountability sessions.',
+      '# TYPE dispatchmate_expired_par gauge',
+      `dispatchmate_expired_par ${m.expiredPar}`,
+      '# HELP dispatchmate_alert_delivery_milliseconds Average app delivery latency over 24 hours.',
+      '# TYPE dispatchmate_alert_delivery_milliseconds gauge',
+      `dispatchmate_alert_delivery_milliseconds ${m.averageDeliveryMs}`,
+      '# HELP dispatchmate_process_uptime_seconds Notification process uptime.',
+      '# TYPE dispatchmate_process_uptime_seconds gauge',
+      `dispatchmate_process_uptime_seconds ${m.uptimeSeconds}`,
+      '',
+    ].join('\n');
+  }
+
   async recoveryPolicy(user: AuthenticatedUser, body: any) {
     this.admin(user);
     if (!body.name?.trim() || !body.scheduleCron?.trim()) throw new BadRequestException();

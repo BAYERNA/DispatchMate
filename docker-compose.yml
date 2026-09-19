@@ -144,6 +144,8 @@ services:
     build:
       context: .
       dockerfile: responder-app/Dockerfile
+      args:
+        VITE_WEB_PUSH_PUBLIC_KEY: ${VITE_WEB_PUSH_PUBLIC_KEY:-}
     platform: linux/amd64
     container_name: faind-responder-app
     depends_on:

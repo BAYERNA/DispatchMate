@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { IncidentAccessGuard } from '../alerts/incident-access.guard';
 import { AuthenticatedUser } from '../auth/authenticated-user.interface';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -41,5 +41,7 @@ export class AdvancedOperationsController {
   @Post('incidents/:incidentId/digital-twin') @UseGuards(IncidentAccessGuard)
   twin(@Param('incidentId', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser, @Body() body: any) { return this.service.twin(id, user, body); }
   @Get('operations/metrics') metrics(@CurrentUser() user: AuthenticatedUser) { return this.service.metrics(user); }
+  @Get('operations/metrics/prometheus') @Header('Content-Type', 'text/plain; version=0.0.4')
+  prometheus(@CurrentUser() user: AuthenticatedUser) { return this.service.prometheus(user); }
   @Post('recovery-policies') recovery(@CurrentUser() user: AuthenticatedUser, @Body() body: any) { return this.service.recoveryPolicy(user, body); }
 }

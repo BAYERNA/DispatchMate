@@ -9,3 +9,4 @@ export const objectiveStatus=(id:string,status:string)=>notifyRequest(`/objectiv
 export const afterAction=(id:string)=>notifyRequest(`/incidents/${id}/after-action`,{method:'POST'})
 export const trainingFromIncident=(id:string)=>notifyRequest(`/incidents/${id}/training-from-incident`,{method:'POST',body:{}})
 export const runTwin=(id:string)=>notifyRequest(`/incidents/${id}/digital-twin`,{method:'POST',body:{scenario:'SMOKE',inputs:{elapsedSeconds:300,windMps:1}}})
+export const createHandover=(id:string,body:unknown)=>notifyRequest(`/incidents/${id}/handovers`,{method:'POST',body})

@@ -356,6 +356,8 @@ PGLITE_ROOT=/tmp/dispatchmate-db-check/node_modules/@electric-sql/pglite node te
 - **AI 드리프트·디지털 트윈:** 7일 현장 피드백의 오탐·미탐 비율을 스냅샷으로 남기고, 연기·열·대피 훈련용 단순 모의를 저장합니다. 모의값은 실제 안전 판단에 사용할 수 없습니다.
 - **관측성·복구:** 작업 큐, MAYDAY, PAR, 앱 수신 지연, AI 드리프트, 복구검증 상태를 관리자 화면에서 확인합니다. `scripts/run-recovery-cycle.sh`는 백업·선택적 격리 DB 복구시험·보존대상 출력을 수행합니다.
 
+Web Push는 대원 화면의 “종료 상태 푸시 활성화”에서 서비스 워커를 등록합니다. 빌드 시 `VITE_WEB_PUSH_PUBLIC_KEY`가 필요합니다. Prometheus 스크레이퍼는 인증 토큰과 함께 `GET /operations/metrics/prometheus`를 호출할 수 있습니다. 외부 계약 전에는 `node scripts/mock-operations-gateway.mjs` 또는 `scripts/test-mock-gateway.sh`로 PUSH/SMS/음성/기관/경로 어댑터 형식을 점검합니다.
+
 외부 푸시, 도로 라우팅, BLE/UWB, RFID 리더, 병원 시스템은 공급자별 계약이 없으므로 고정 설정 어댑터와 실패 상태까지만 제공합니다. URL·토큰·장비가 없으면 성공으로 처리하지 않습니다. V11 적용 후 새 알림 서버와 세 프론트엔드를 함께 배포하세요.
 
 2026-09-19 코드 점검의 근거, 재현 결과, 미검증 범위는 [CODE_REVIEW.md](CODE_REVIEW.md)를 참고하세요.
