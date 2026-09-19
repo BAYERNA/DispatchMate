@@ -11,8 +11,9 @@ import org.springframework.util.AntPathMatcher;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-// ai-server → backend 콜백 전용 (FR-24 CCTV 감지, FR-26 드론 정찰 결과) — 로그인 사용자 JWT가 아니라
-// 두 서비스만 공유하는 내부 토큰으로 검증한다. notification-server의 InternalWebhookGuard와 동일한 설계:
+// ai-server → backend 콜백(FR-24 CCTV 감지, FR-26 드론 정찰 결과) + Prometheus의 /actuator/prometheus
+// 스크레이핑 전용 — 로그인 사용자 JWT가 아니라 내부 서비스끼리만 공유하는 토큰으로 검증한다.
+// notification-server의 InternalWebhookGuard와 동일한 설계:
 // faind.security.internal-service-token을 설정하지 않으면(로컬 데모 기본값) 검증을 건너뛴다.
 @Component
 public class InternalServiceAuthFilter extends OncePerRequestFilter {
@@ -21,7 +22,8 @@ public class InternalServiceAuthFilter extends OncePerRequestFilter {
   private static final AntPathMatcher PATH_MATCHER = new AntPathMatcher();
   private static final String[] INTERNAL_PATHS = {
     "/api/v1/incidents/dispatch/cctv-detections",
-    "/api/v1/incidents/drone-dispatches/*/recon-result"
+    "/api/v1/incidents/drone-dispatches/*/recon-result",
+    "/actuator/prometheus"
   };
 
   private final String internalServiceToken;

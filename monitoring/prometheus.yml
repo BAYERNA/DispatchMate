@@ -1,0 +1,12 @@
+# backend가 노출하는 /actuator/prometheus를 15초 주기로 스크레이핑한다.
+# 이 엔드포인트는 InternalServiceAuthFilter가 보호한다(backend/.../SecurityConfig.java) —
+# FAIND_INTERNAL_SERVICE_TOKEN을 설정한 경우에만 authorization 블록의 토큰이 필요하다.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: faind-backend
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["backend:8080"]

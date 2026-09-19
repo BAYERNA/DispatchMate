@@ -1,5 +1,7 @@
 # FAIND 로컬 개발용 Docker Compose. 6개 런타임 전체를 한 번에 기동한다.
 # (기술스택 §2.9: 데모 규모는 Docker Compose로 충분, Kubernetes는 실서비스 확장 시점의 로드맵)
+# + prometheus/grafana: backend가 노출하던 /actuator/prometheus를 실제로 수집·시각화한다
+# (http://localhost:3000, admin/faind).
 #
 # 3개 프론트엔드(admin-web/commander-tablet/responder-app)는 각자 nginx.conf로 /api, /notify,
 # /socket.io, /ai-stream을 backend/notification-server/ai-server로 프록시한다 — dev server의
@@ -138,6 +140,35 @@ services:
         condition: service_started
     ports:
       - "8083:80"
+
+  # backend가 노출하지만 아무도 보지 않던 /actuator/prometheus(CircuitBreaker 상태 등)를
+  # 실제로 시계열로 쌓고(prometheus) 대시보드로 보여준다(grafana) — 로그를 뒤지지 않고도
+  # aiServer/notificationServer 서킷 open 여부를 한눈에 볼 수 있다.
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: faind-prometheus
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: faind-grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: faind
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
 
 volumes:
   faind-postgres-data:
