@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
-import { addTranscript, createPublicStatusToken, forecastResources, preserveEvidence } from '../api/advancedOperations'
+import { addTranscript, analyzeTranscript, createPublicStatusToken, forecastResources, preserveEvidence } from '../api/advancedOperations'
 
 export function GovernanceCommandPanel({ incidentId }: { incidentId: string }) {
   const [transcript, setTranscript] = useState('')
@@ -10,7 +10,7 @@ export function GovernanceCommandPanel({ incidentId }: { incidentId: string }) {
   const action = useMutation({
     mutationFn: ({ kind }: { kind: 'forecast' | 'transcript' | 'evidence' | 'public' }) => {
       if (kind === 'forecast') return forecastResources(incidentId)
-      if (kind === 'transcript') return addTranscript(incidentId, { channelLabel: '지휘망', transcript, startedAt: new Date().toISOString() })
+      if (kind === 'transcript') return addTranscript(incidentId, { channelLabel: '지휘망', transcript, startedAt: new Date().toISOString() }).then((value:any)=>analyzeTranscript(value.transcriptId))
       if (kind === 'evidence') return preserveEvidence(incidentId, { evidenceType: 'VIDEO', sourceUri: evidenceUri, contentHash: evidenceHash, legalHold: true })
       return createPublicStatusToken(incidentId)
     },

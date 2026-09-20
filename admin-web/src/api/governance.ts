@@ -24,6 +24,9 @@ export interface AssuranceOverview {
   fieldDevices: { total: number; verified: number }
   deviceList: Array<{ deviceRegistrationId: string; platform: string; attestationStatus: string; encryptionCapability?: string; backgroundLocationEnabled: boolean; lastSeenAt: string }>
   slo: Array<{ metricKey: string; name: string; targetRatio: number; actualRatio: number | null; goodCount: number; totalCount: number }>
+  securityAnomalies: Array<{ anomalyId: string; anomalyType: string; riskScore: number; status: string; detectedAt: string }>
+  webhookReceipts: Array<{ providerKey: string; processingStatus: string; count: number; lastReceivedAt: string }>
+  offlineAssets: { total: number; verified: number }
 }
 export const getAssurance = () => notifyRequest<AssuranceOverview>('/assurance')
 export const previewRetention = (policyId: string) => notifyRequest(`/assurance/retention/${policyId}/preview`, { method: 'POST' })

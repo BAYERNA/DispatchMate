@@ -25,4 +25,6 @@ export class AssuranceController {
   @Post('temporary-grants/:id/revoke') revoke(@Param('id',new ParseUUIDPipe()) id:string,@CurrentUser() user:AuthenticatedUser){return this.service.revokeGrant(id,user);}
   @Post('offline-assets') asset(@CurrentUser() user:AuthenticatedUser,@Body() body:any){return this.service.offlineAsset(user,body);}
   @Post('audit-exports') auditExport(@CurrentUser() user:AuthenticatedUser,@Body() body:any){return this.service.auditExport(user,body);}
+  @Post('signing-keys') signingKey(@CurrentUser() user:AuthenticatedUser,@Body() body:any){return this.service.signingKey(user,body);}
+  @Post('signatures/:id/verify') verifySignature(@Param('id',new ParseUUIDPipe()) id:string,@CurrentUser() user:AuthenticatedUser){return this.service.verifySignature(id,user);}
 }

@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { createHash } from 'node:crypto';
+import { createHash, verify } from 'node:crypto';
 import { Repository } from 'typeorm';
 import { Alert } from '../alerts/entities/alert.entity';
 import { AuthenticatedUser } from '../auth/authenticated-user.interface';
@@ -143,9 +143,24 @@ export class AssuranceService {
     return (await this.db.query(`INSERT INTO audit_export_manifests(from_sequence,to_sequence,event_count,head_hash,artifact_uri,artifact_hash,created_by) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING export_id AS "exportId",status,event_count AS "eventCount"`, [range.first,range.last,range.count,range.head,body.artifactUri.trim(),body.artifactHash.toLowerCase(),user.userId]))[0];
   }
 
+  async signingKey(user: AuthenticatedUser, body: any) {
+    this.admin(user);
+    if(!body.keyId?.trim()||!body.ownerLabel?.trim()||!['RSA-SHA256','ECDSA-SHA256'].includes(body.algorithm)||!body.publicKeyPem?.includes('PUBLIC KEY'))throw new BadRequestException();
+    return (await this.db.query(`INSERT INTO trusted_signing_keys(key_id,owner_label,algorithm,public_key_pem,valid_from,valid_until,created_by) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(key_id) DO UPDATE SET owner_label=EXCLUDED.owner_label,algorithm=EXCLUDED.algorithm,public_key_pem=EXCLUDED.public_key_pem,valid_from=EXCLUDED.valid_from,valid_until=EXCLUDED.valid_until,status='ACTIVE' RETURNING key_id AS "keyId",status`,[body.keyId.trim(),body.ownerLabel.trim(),body.algorithm,body.publicKeyPem,body.validFrom,body.validUntil,user.userId]))[0];
+  }
+
+  async verifySignature(id: string, user: AuthenticatedUser) {
+    this.admin(user);
+    const row=(await this.db.query(`SELECT s.signature_id,s.document_hash,s.signature_value,s.signature_algorithm,s.signed_at,k.public_key_pem,k.algorithm,k.status,k.valid_from,k.valid_until FROM electronic_signatures s LEFT JOIN trusted_signing_keys k ON k.key_id=s.public_key_id WHERE s.signature_id=$1`,[id]))[0];
+    if(!row)throw new NotFoundException();
+    let valid=false;
+    try{valid=row.status==='ACTIVE'&&new Date(row.signed_at)>=new Date(row.valid_from)&&new Date(row.signed_at)<=new Date(row.valid_until)&&verify('sha256',Buffer.from(row.document_hash,'hex'),row.public_key_pem,Buffer.from(row.signature_value,'base64'));}catch{valid=false;}
+    return (await this.db.query(`UPDATE electronic_signatures SET verification_status=$2 WHERE signature_id=$1 RETURNING signature_id AS "signatureId",verification_status AS "verificationStatus"`,[id,valid?'VALID':'INVALID']))[0];
+  }
+
   async overview(user: AuthenticatedUser) {
     this.admin(user);
-    const [retention,policies,circuits,certs,approvals,devices,slo] = await Promise.all([
+    const [retention,policies,circuits,certs,approvals,devices,slo,anomalies,webhooks,offlineAssets] = await Promise.all([
       this.db.query(`SELECT execution_id AS "executionId",status,candidate_count AS "candidateCount",executed_count AS "executedCount",created_at AS "createdAt" FROM retention_execution_plans ORDER BY created_at DESC LIMIT 10`),
       this.db.query(`SELECT policy_id AS "policyId",data_category AS "dataCategory",retention_days AS "retentionDays",action,legal_hold AS "legalHold",enabled FROM data_retention_policies ORDER BY data_category`),
       this.db.query(`SELECT provider_key AS "providerKey",state,consecutive_failures AS "consecutiveFailures",last_error AS "lastError",updated_at AS "updatedAt" FROM provider_circuit_breakers ORDER BY provider_key`),
@@ -153,8 +168,11 @@ export class AssuranceService {
       this.db.query(`SELECT COUNT(*)::int AS count FROM privileged_action_approvals WHERE status='PENDING' AND expires_at>now()`),
       this.db.query(`SELECT COUNT(*)::int AS total,COUNT(*) FILTER(WHERE attestation_status='VERIFIED')::int AS verified FROM managed_field_devices`),
       this.sloDashboard(user),
+      this.db.query(`SELECT anomaly_id AS "anomalyId",anomaly_type AS "anomalyType",risk_score AS "riskScore",status,detected_at AS "detectedAt" FROM security_anomaly_events WHERE status IN ('OPEN','INVESTIGATING') ORDER BY risk_score DESC,detected_at DESC LIMIT 20`),
+      this.db.query(`SELECT provider_key AS "providerKey",processing_status AS "processingStatus",COUNT(*)::int AS count,MAX(received_at) AS "lastReceivedAt" FROM provider_webhook_receipts GROUP BY provider_key,processing_status ORDER BY provider_key`),
+      this.db.query(`SELECT COUNT(*)::int AS total,COUNT(*) FILTER(WHERE status='VERIFIED')::int AS verified FROM offline_asset_manifests`),
     ]);
     const deviceList=await this.db.query(`SELECT device_registration_id AS "deviceRegistrationId",platform,attestation_status AS "attestationStatus",encryption_capability AS "encryptionCapability",background_location_enabled AS "backgroundLocationEnabled",last_seen_at AS "lastSeenAt" FROM managed_field_devices ORDER BY last_seen_at DESC LIMIT 50`);
-    return { retention, retentionPolicies: policies, circuits, certificates: certs, pendingApprovals: approvals[0].count, fieldDevices: devices[0], deviceList, slo };
+    return { retention, retentionPolicies: policies, circuits, certificates: certs, pendingApprovals: approvals[0].count, fieldDevices: devices[0], deviceList, slo, securityAnomalies: anomalies, webhookReceipts: webhooks, offlineAssets: offlineAssets[0] };
   }
 }

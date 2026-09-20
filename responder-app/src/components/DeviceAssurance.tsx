@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { notifyRequest } from '../api/client'
+import { nativeBridge } from '../native/nativeBridge'
 
 const KEY = 'faind.deviceFingerprint.v1'
 function fingerprint() {
@@ -16,7 +17,9 @@ export function DeviceAssurance() {
   const register = async () => {
     setPending(true)
     try {
-      const result = await notifyRequest<{ attestationStatus: string }>('/assurance/field-devices', { method: 'POST', body: { platform: 'WEB', deviceFingerprint: fingerprint(), encryptionCapability: crypto.subtle ? 'WEBCRYPTO' : null, backgroundLocationEnabled: false } })
+      const native= nativeBridge()
+      const attestation=native ? await native.getAttestation() : { platform: 'WEB' as const, deviceFingerprint: fingerprint(), encryptionCapability: crypto.subtle ? 'WEBCRYPTO' : 'NONE' }
+      const result = await notifyRequest<{ attestationStatus: string }>('/assurance/field-devices', { method: 'POST', body: { ...attestation, backgroundLocationEnabled: Boolean(native) } })
       setStatus(result.attestationStatus === 'VERIFIED' ? '검증됨' : '관리자 검증 대기')
     } catch (error) { setStatus(error instanceof Error ? error.message : '등록 실패') }
     finally { setPending(false) }

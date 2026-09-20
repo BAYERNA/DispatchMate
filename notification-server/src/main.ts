@@ -5,7 +5,7 @@ import { AppModule } from './app.module';
 // FAIND 알림 서비스 (기술스택 §2.3: 비동기 I/O에 강한 Node.js — WebSocket 기반 실시간
 // 알림·인수인계 전파에 사용). FR-06, FR-18, FR-22, FR-23 담당.
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   const corsOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? 'http://localhost:8080')
     .split(',')

@@ -64,6 +64,15 @@ export function GovernancePage() {
       </div>
     </section>
     <section className="wf" style={{ marginTop: 14 }}>
+      <div className="wf-header"><span>보안 이상징후·공급자 webhook</span></div>
+      <div className="wf-body">
+        {(production?.securityAnomalies ?? []).map(item => <div className="alert-item" key={item.anomalyId}><strong>위험 {item.riskScore} · {item.anomalyType}</strong> · {item.status}</div>)}
+        {!production?.securityAnomalies.length && <div className="alert-meta">열린 보안 이상징후가 없습니다.</div>}
+        {(production?.webhookReceipts ?? []).map(item => <div className="alert-meta" key={`${item.providerKey}-${item.processingStatus}`}>{item.providerKey} · {item.processingStatus} · {item.count}건</div>)}
+        <div className="alert-meta">암호화 오프라인 첨부 검증 {production?.offlineAssets.verified ?? 0}/{production?.offlineAssets.total ?? 0}</div>
+      </div>
+    </section>
+    <section className="wf" style={{ marginTop: 14 }}>
       <div className="wf-header"><span>검증·복구 훈련</span></div>
       <div className="wf-body">
         <div className="form-row">

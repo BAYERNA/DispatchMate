@@ -1,6 +1,7 @@
 // Optional PostgreSQL-WASM integration check. Does not access a production database.
 // Build first; set PGLITE_ROOT to an independently installed @electric-sql/pglite directory.
 import assert from 'node:assert/strict';
+import { createHmac, generateKeyPairSync, sign } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
@@ -19,6 +20,7 @@ const { AutomationService } = require('../dist/mission/automation.service.js');
 const { AdvancedOperationsService } = require('../dist/advanced-operations/advanced-operations.service.js');
 const { GovernanceService } = require('../dist/governance/governance.service.js');
 const { AssuranceService } = require('../dist/assurance/assurance.service.js');
+const { FieldIntelligenceService } = require('../dist/field-intelligence/field-intelligence.service.js');
 const db = new PGlite({ extensions: { pgcrypto } });
 const migrations = new URL('../../backend/src/main/resources/db/migration/', import.meta.url);
 const rows = async (sql, args = []) => (await db.query(sql, args)).rows;
@@ -47,6 +49,7 @@ try {
   await db.exec(await readFile(new URL('V11__field_safety_and_operational_intelligence.sql', migrations), 'utf8'));
   await db.exec(await readFile(new URL('V12__resilience_governance_and_federation.sql', migrations), 'utf8'));
   await db.exec(await readFile(new URL('V13__production_assurance_and_policy_execution.sql', migrations), 'utf8'));
+  await db.exec(await readFile(new URL('V14__field_integration_and_decision_support.sql', migrations), 'utf8'));
   const delivery = new DeliveryService({ query: rows });
   const operator = {userId:uuid(99),role:'COMMANDER'};
   const user = {userId:a,role:'RESPONDER'};
@@ -168,7 +171,7 @@ try {
   const model=await governance.registerModel(adminUser,{modelName:'fire-v2',version:'2.0',artifactUri:'registry://fire/2.0',artifactHash:'b'.repeat(64),explanation:{dataset:'validated'}});await governance.modelAction(model.releaseId,adminUser,'APPROVE');assert.equal((await governance.modelAction(model.releaseId,adminUser,'ACTIVATE')).status,'ACTIVE');checks++;
   const forecast=await governance.forecast(incident,commanderUser,{horizonMinutes:60});assert.equal(forecast.disclaimer.includes('자동 배치하지 않습니다'),true);checks++;
   const evidence=await governance.evidence(incident,commanderUser,{evidenceType:'VIDEO',sourceUri:'evidence://camera/1',contentHash:'c'.repeat(64),legalHold:true});assert.equal(evidence.custodyHash.length,64);checks++;
-  await governance.buildingModel(adminUser,{facilityName:'훈련동',modelFormat:'IFC',version:'1',sourceUri:'bim://training/1',contentHash:'d'.repeat(64)});await governance.transcript(incident,commanderUser,{channelLabel:'지휘망',transcript:'2층 수색 완료',startedAt:new Date().toISOString()});checks++;
+  const building=await governance.buildingModel(adminUser,{facilityName:'훈련동',modelFormat:'IFC',version:'1',sourceUri:'bim://training/1',contentHash:'d'.repeat(64)});const radio=await governance.transcript(incident,commanderUser,{channelLabel:'지휘망',transcript:'메이데이, 2층 구조 요청',startedAt:new Date().toISOString()});checks++;
   const publicToken=await governance.createPublicToken(incident,commanderUser,{audience:'PUBLIC',ttlMinutes:10});const publicView=await governance.publicStatus(publicToken.token);assert.equal(publicView.status,'IN_PROGRESS');assert.equal(publicView.location,undefined);checks++;
   await governance.preferences(responderUser,{locale:'ko-KR',highContrast:true,textScale:1.25,roleLayout:{compact:true}});await governance.retention(adminUser,{dataCategory:'radio_transcript',retentionDays:180,action:'ANONYMIZE'});checks++;
   const assurance=new AssuranceService(missionRepo);
@@ -185,6 +188,14 @@ try {
   const approval=await assurance.requestApproval(adminUser,{actionType:'FAILOVER',resourceType:'environment',resourceId:'staging',payload:{reason:'drill'}});await assert.rejects(()=>assurance.decideApproval(approval.approvalId,adminUser,'APPROVED'));assert.equal((await assurance.decideApproval(approval.approvalId,secondAdminUser,'APPROVED')).status,'APPROVED');checks++;
   const device=await assurance.fieldDevice(responderUser,{platform:'ANDROID',deviceFingerprint:'test-device-001',encryptionCapability:'HARDWARE_KEYSTORE',backgroundLocationEnabled:true});assert.equal(device.attestationStatus,'PENDING');const asset=await assurance.offlineAsset(responderUser,{assetId:uuid(400),incidentId:incident,mediaType:'image/jpeg',byteSize:1024,contentHash:'e'.repeat(64),priority:1});assert.equal(asset.priority,1);checks++;
   const manifest=await assurance.auditExport(adminUser,{artifactUri:'worm://audit/export-1',artifactHash:'f'.repeat(64)});assert.ok(manifest.eventCount>=1);checks++;
+  const signingPair=generateKeyPairSync('ec',{namedCurve:'P-256'}),publicPem=signingPair.publicKey.export({type:'spki',format:'pem'}),documentHash='9'.repeat(64);await assurance.signingKey(adminUser,{keyId:'hospital-test-key',ownerLabel:'테스트 병원',algorithm:'ECDSA-SHA256',publicKeyPem:publicPem,validFrom:new Date(Date.now()-60000).toISOString(),validUntil:new Date(Date.now()+86400000).toISOString()});const signatureValue=sign('sha256',Buffer.from(documentHash,'hex'),signingPair.privateKey).toString('base64');const electronicSignature=await governance.signature(commanderUser,{resourceType:'HANDOVER',resourceId:incident,documentHash,signatureValue,publicKeyId:'hospital-test-key',signatureAlgorithm:'ECDSA-SHA256'});assert.equal((await assurance.verifySignature(electronicSignature.signatureId,adminUser)).verificationStatus,'VALID');checks++;
   const oldModel=await governance.registerModel(adminUser,{modelName:'fire-detection',version:'1.0',artifactUri:'registry://fire/1.0',artifactHash:'1'.repeat(64)});await governance.modelAction(oldModel.releaseId,adminUser,'APPROVE');await governance.modelAction(oldModel.releaseId,adminUser,'ACTIVATE');const newModel=await governance.registerModel(adminUser,{modelName:'fire-detection',version:'2.0',artifactUri:'registry://fire/2.0',artifactHash:'2'.repeat(64)});await governance.modelAction(newModel.releaseId,adminUser,'APPROVE');await governance.modelAction(newModel.releaseId,adminUser,'ACTIVATE');await assurance.guardrail(adminUser,{modelName:'fire-detection',minimumSamples:20,maxFalsePositiveRate:.25,maxFalseNegativeRate:.2,autoRollback:true});await providerAutomation.rollbackDriftedModel('fire-detection',25,.4,.1);assert.equal((await rows(`SELECT version FROM ai_model_releases WHERE model_name='fire-detection' AND status='ACTIVE'`))[0].version,'1.0');checks++;
+  const field=new FieldIntelligenceService(missionRepo,{get:key=>key==='PROVIDER_TEST_WEBHOOK_SECRET'?'webhook-test-value':undefined},{createFromSystem:async value=>{alertsCreated.push(value);return value}});
+  const webhookBody=Buffer.from('{"status":"delivered"}'),webhookSignature=createHmac('sha256','webhook-test-value').update(webhookBody).digest('hex');const receipt=await field.webhook('test','event-1','DELIVERED',webhookSignature,webhookBody);assert.equal(receipt.status,'PROCESSED');assert.equal((await field.webhook('test','event-1','DELIVERED',webhookSignature,webhookBody)).status,'DUPLICATE');await assert.rejects(()=>field.webhook('test','event-2','DELIVERED','bad',webhookBody));checks++;
+  await field.uploadChunk(responderUser,{chunkId:uuid(401),assetId:asset.assetId,chunkIndex:0,byteSize:512,contentHash:'a'.repeat(64)});await field.importBim(building.modelId,adminUser,{elements:[{externalId:'exit-1',elementType:'EXIT',label:'동측 비상구',floorLabel:'1F',geometry:{type:'Point',coordinates:[127,37.5]}}]});checks++;
+  const detected=await field.analyzeTranscript(radio.transcriptId,commanderUser);assert.ok(detected.detections.some(item=>item.keyword==='MAYDAY'));checks++;
+  const flight=await field.flight(incident,commanderUser,{missionType:'RECON',route:[{latitude:37.5,longitude:127}],maxAltitudeM:100});assert.equal((await field.approveFlight(flight.flightId,adminUser,'APPROVED')).approvalStatus,'APPROVED');checks++;
+  const board=await field.decisionBoard(incident,commanderUser);assert.ok(board.recommendations.length>=1);await field.decision(board.recommendations[0].recommendationId,commanderUser,'ACCEPTED','현장 위험 우선 대응');checks++;
+  await field.anomaly(adminUser,{anomalyType:'DEVICE_CHANGE',riskScore:70,evidence:{device:'new'}});const kpi=await field.kpi(incident,commanderUser);assert.ok('averageDeliverySeconds' in kpi.metrics);checks++;
   console.log(`PASS: ${checks} operations database scenarios (PGlite; production PostgreSQL/Flyway still require verification)`);
 } finally { await db.close(); }

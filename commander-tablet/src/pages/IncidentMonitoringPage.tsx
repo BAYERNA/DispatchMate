@@ -15,6 +15,7 @@ import { MissionControlPanel } from '../components/MissionControlPanel'
 import { AdvancedCommandPanel } from '../components/AdvancedCommandPanel'
 import { PatientHandoverPanel } from '../components/PatientHandoverPanel'
 import { GovernanceCommandPanel } from '../components/GovernanceCommandPanel'
+import { DecisionSupportPanel } from '../components/DecisionSupportPanel'
 import { CloseConfirmDialog } from '../components/CloseConfirmDialog'
 import { closeIncident, getAiJudgments, getMonitoring, reassignCommsLead } from '../api/incidents'
 import { getAccount } from '../api/accounts'
@@ -222,6 +223,7 @@ export function IncidentMonitoringPage() {
               <AdvancedCommandPanel incidentId={incidentId}/>
               <PatientHandoverPanel incidentId={incidentId}/>
               <GovernanceCommandPanel incidentId={incidentId}/>
+              <DecisionSupportPanel incidentId={incidentId}/>
             </div>
           </div>
         </>

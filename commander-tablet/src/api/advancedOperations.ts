@@ -14,3 +14,8 @@ export const forecastResources=(id:string)=>notifyRequest<any>(`/governance/inci
 export const addTranscript=(id:string,body:unknown)=>notifyRequest(`/governance/incidents/${id}/transcripts`,{method:'POST',body})
 export const preserveEvidence=(id:string,body:unknown)=>notifyRequest(`/governance/incidents/${id}/evidence`,{method:'POST',body})
 export const createPublicStatusToken=(id:string)=>notifyRequest<any>(`/governance/incidents/${id}/public-token`,{method:'POST',body:{audience:'FACILITY_MANAGER',ttlMinutes:30}})
+export const analyzeTranscript=(id:string)=>notifyRequest<any>(`/field-intelligence/transcripts/${id}/analyze`,{method:'POST'})
+export const getDecisionBoard=(id:string)=>notifyRequest<any>(`/field-intelligence/incidents/${id}/decision-board`)
+export const decideRecommendation=(id:string,status:string,reason:string)=>notifyRequest(`/field-intelligence/recommendations/${id}/${status}`,{method:'POST',body:{reason}})
+export const createDroneFlight=(id:string,body:unknown)=>notifyRequest(`/field-intelligence/incidents/${id}/flights`,{method:'POST',body})
+export const generateKpi=(id:string)=>notifyRequest<any>(`/field-intelligence/incidents/${id}/kpi`,{method:'POST'})

@@ -241,7 +241,7 @@ CI의 AI 의존성 점검은 정보성이고 npm 점검은 critical 기준이므
   Java 송신부도 Bearer 토큰을 전달하며, 토큰 미설정 시 인증을 생략하지 않습니다.
 - 공개 배포 전 TLS, 서비스 간 네트워크 격리, 외부 API 및 의존성 취약점 점검을 별도로 수행하세요.
   `/pre-analysis`, `/sop-match`는 내부 서비스용이며 공개망에 노출하지 마세요.
-- 실제 PostgreSQL에서 V7~V13 마이그레이션·계정 무효화·재알림/오프라인 명령 중복 방지 및 실제 카메라·SMS·음성·기관 연동을 검증하세요.
+- 실제 PostgreSQL에서 V7~V14 마이그레이션·계정 무효화·재알림/오프라인 명령 중복 방지 및 실제 카메라·SMS·음성·기관 연동을 검증하세요.
 
 ## 이번 변경 및 호환성
 
@@ -279,7 +279,7 @@ CI의 AI 의존성 점검은 정보성이고 npm 점검은 critical 기준이므
 
 새 API는 `POST /incidents/:incidentId/alerts/receipts` (`{ "alertIds": ["UUID"] }`)와
 `GET /incidents/:incidentId/alerts/delivery-status`입니다. 브라우저에서는 `/notify` 프록시를 사용합니다.
-배포 시 **backend Flyway V8~V13을 먼저 적용**한 뒤 알림 서버와 프론트를 갱신하세요.
+배포 시 **backend Flyway V8~V14를 먼저 적용**한 뒤 알림 서버와 프론트를 갱신하세요.
 구버전 알림 서버와의 혼합 운영, 실제 PostgreSQL의 동시 세션 잠금, 전체 서비스 E2E는 별도 검증이 필요합니다.
 기존 10분 미확인 위험경고의 1회 재알림 정책은 유지합니다. 대상자 중 일부만 확인한 경우의 추가 재알림 정책은 포함하지 않습니다.
 
@@ -358,7 +358,7 @@ PGLITE_ROOT=/tmp/dispatchmate-db-check/node_modules/@electric-sql/pglite node te
 
 Web Push는 대원 화면의 “종료 상태 푸시 활성화”에서 서비스 워커를 등록합니다. 빌드 시 `VITE_WEB_PUSH_PUBLIC_KEY`가 필요합니다. Prometheus 스크레이퍼는 인증 토큰과 함께 `GET /operations/metrics/prometheus`를 호출할 수 있습니다. 외부 계약 전에는 `node scripts/mock-operations-gateway.mjs` 또는 `scripts/test-mock-gateway.sh`로 PUSH/SMS/음성/기관/경로 어댑터 형식을 점검합니다.
 
-외부 푸시, 도로 라우팅, BLE/UWB, RFID 리더, 병원 시스템은 공급자별 계약이 없으므로 고정 설정 어댑터와 실패 상태까지만 제공합니다. URL·토큰·장비가 없으면 성공으로 처리하지 않습니다. V13 적용 후 새 알림 서버와 세 프론트엔드를 함께 배포하세요.
+외부 푸시, 도로 라우팅, BLE/UWB, RFID 리더, 병원 시스템은 공급자별 계약이 없으므로 고정 설정 어댑터와 실패 상태까지만 제공합니다. URL·토큰·장비가 없으면 성공으로 처리하지 않습니다. V14 적용 후 새 알림 서버와 세 프론트엔드를 함께 배포하세요.
 
 ### V12 복원력·거버넌스·연합 운영
 
@@ -402,7 +402,7 @@ V12의 실제 Vault/KMS 조회, mTLS handshake, BIM 렌더러, 음성 인식 공
 - **감사 WORM manifest:** hash-chain 범위, head hash, 외부 artifact URI와 SHA-256을 기록해 외부 WORM 복제를 검증할 수 있습니다. 저장소 자체가 WORM 스토리지를 대신하지 않습니다.
 - **인증서 인벤토리:** 서비스별 인증서 fingerprint, 발급자와 만료일을 기록합니다. `scripts/check-certificate-expiry.sh`로 배포 인증서가 지정 기간 안에 만료되는지 차단할 수 있습니다.
 
-CI는 V1~V13 마이그레이션과 51개 DB·정책 시나리오, Compose 설정, 셸 문법 및 운영 환경 Chaos 차단을 검증합니다.
+CI는 V1~V14 마이그레이션과 58개 DB·현장 통합 시나리오, Compose 설정, 셸 문법 및 운영 환경 Chaos 차단을 검증합니다.
 
 ```bash
 # 로컬 운영 보증 검사
@@ -414,5 +414,19 @@ CERTIFICATE_WARNING_DAYS=30 ./scripts/check-certificate-expiry.sh certs/service.
 ```
 
 실제 네이티브 백그라운드 위치·Secure Enclave/Android Keystore, MDM 원격 삭제, WORM 업로드, Vault/KMS의 플랫폼별 인증·비밀 생성, 인증서 자동 발급·회전, 음성 인식, BIM 렌더링은 플랫폼별 공급자가 필요합니다. V13은 sidecar/file 주입과 실제 mTLS 전송 경로를 제공하지만, 외부 플랫폼이 연결되기 전 성공 상태를 만들지 않고 `PENDING`, `미설정` 또는 명시적 실패로 유지합니다.
+
+### V14 현장 통합·의사결정 지원
+
+- **공급자 webhook 검증:** `/provider-webhooks/:provider`는 raw request body의 HMAC-SHA256 서명을 검증하고 외부 event ID로 재전송을 멱등 처리합니다. 공급자별 `PROVIDER_<KEY>_WEBHOOK_SECRET` 또는 `_FILE`이 없으면 접근을 거부합니다.
+- **암호화 오프라인 증거:** 대원 앱은 사진·영상·음성을 비추출 AES-GCM 키로 IndexedDB에 암호화하고 SHA-256 manifest를 등록합니다. 서버 등록 실패 시 암호화 원본을 삭제하지 않습니다. 실제 분할 업로더는 chunk hash와 우선순위 계약을 사용합니다.
+- **네이티브 브리지 계약:** Android/iOS 앱이 기기 attestation, 백그라운드 위치, 원격 폐기를 구현할 수 있는 `NativeFieldBridge` 계약을 추가했습니다. 브라우저에서는 해당 기능을 지원한다고 가장하지 않습니다.
+- **BIM 요소:** IFC 변환기가 방·계단·출구·방화문·소화전·위험구역·집결지를 최대 500개 단위로 멱등 반영할 수 있습니다. GeoJSON 좌표와 통행 가능 여부를 함께 저장합니다.
+- **무전 위험어 감지:** 저장된 전사에서 MAYDAY·철수·통신두절·부상 키워드를 감지하고 CRITICAL 항목은 멱등 안전경보로 연결합니다. 현재 구현은 규칙 기반 보조 기능이며 원본 무전 확인을 대체하지 않습니다.
+- **전자서명 실검증:** 신뢰 공개키의 유효기간과 상태를 확인하고 RSA/ECDSA SHA-256 서명을 실제 검증한 후에만 환자 인계의 송신자·수신자 서명으로 연결합니다. 두 서명이 모두 검증되어야 인계를 `VERIFIED`로 표시합니다.
+- **공공데이터·드론:** 기상·도로통제·대피소·소방용수·위험물·병원 관측값에 출처, 관측시각, 만료와 신뢰도를 기록합니다. 드론 임무는 경로·귀환점·고도·최소 배터리를 요구하고 작성자와 다른 지휘관의 승인을 강제합니다.
+- **지휘 의사결정 보드:** 활성 MAYDAY, 차단된 목표, 공급자 장애를 근거로 구조·재할당·대체통신 권고를 생성합니다. 권고는 자동 명령이 아니며 지휘관 승인·거절 사유를 반드시 저장합니다.
+- **보안·KPI:** 기기 변경·대량 조회·권한 상승·서명 실패 등의 이상징후와 신고 후 첫 상태수신, 알림 전달, MAYDAY 확인, 사건 지속시간 KPI 스냅샷을 저장합니다.
+
+CI는 V1~V14 마이그레이션과 58개 DB·현장 통합 시나리오를 검증합니다. 실시간 음성 인식, 실제 IFC 파서, 객체 스토리지 chunk 업로드, 드론 비행제어와 공공기관 API 호출은 공급자 SDK/계약이 연결되어야 하며, 현재 어댑터는 이를 성공으로 위장하지 않습니다.
 
 2026-09-19 코드 점검의 근거, 재현 결과, 미검증 범위는 [CODE_REVIEW.md](CODE_REVIEW.md)를 참고하세요.
