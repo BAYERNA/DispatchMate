@@ -26,6 +26,7 @@ repositories {
 ext {
 	set('resilience4jVersion', '2.2.0')
 	set('springdocVersion', '2.6.0')
+	set('testcontainersVersion', '1.20.4')
 }
 
 dependencies {
@@ -70,6 +71,12 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.security:spring-security-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+	// Testcontainers — Mockito 단위테스트만으로는 못 잡는, "실제 Postgres에 Flyway가 붙는지"
+	// 자체를 검증한다(V15에서 발견한 VARCHAR 길이 버그 같은 건 스키마가 진짜로 있어야 드러난다).
+	testImplementation platform("org.testcontainers:testcontainers-bom:${testcontainersVersion}")
+	testImplementation 'org.testcontainers:junit-jupiter'
+	testImplementation 'org.testcontainers:postgresql'
 }
 
 tasks.named('test') {
