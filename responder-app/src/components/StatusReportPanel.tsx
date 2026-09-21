@@ -138,7 +138,7 @@ export function StatusReportPanel({ incidentId, userId }: { incidentId: string; 
               {mutation.isPending ? '전송 중…' : '상태 전송'}
             </button>
           </div>
-          {success && <Banner kind="success" message="상태를 전송했습니다." />}
+          {success && <Banner kind="success" message={mutation.data?.queued ? '오프라인 보관했습니다. 연결되면 자동 전송합니다.' : '상태를 전송했습니다.'} />}
           {error && <Banner kind="error" message={error} />}
         </form>
       </div>

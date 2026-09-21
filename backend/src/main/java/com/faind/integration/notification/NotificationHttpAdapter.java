@@ -35,7 +35,12 @@ public class NotificationHttpAdapter implements NotificationPort {
         .build();
     JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
     requestFactory.setReadTimeout(Duration.ofSeconds(5));
-    this.restClient = restClientBuilder.baseUrl(baseUrl).requestFactory(requestFactory).build();
+    var builder = restClientBuilder.baseUrl(baseUrl).requestFactory(requestFactory);
+    String token = env.getProperty("faind.integration.notification-server.token", "");
+    if (org.springframework.util.StringUtils.hasText(token)) {
+      builder.defaultHeader("Authorization", "Bearer " + token);
+    }
+    this.restClient = builder.build();
   }
 
   @Override

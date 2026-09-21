@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useContext, useEffect, useState, type FormEvent } from 'react'
+import { AuthContext } from '../auth/AuthContext'
 import { acknowledgeAlert, getAckFreshness, listAlerts, postEntryInfo, postRiskWarning, postSupplyRequest } from '../api/alerts'
 import { ApiError } from '../api/client'
 import { Banner } from './Banner'
 import type { AlertResponse } from '../types'
+import { receiveAlerts } from '../api/receipts'
 
 const ALERT_TYPE_LABEL: Record<string, string> = {
   RISK_WARNING: '⚠ 위험정보',
@@ -28,13 +30,15 @@ function describeAlert(alert: AlertResponse): string {
 }
 
 function AckFreshness({ alertId }: { alertId: string }) {
-  const freshnessQuery = useQuery({ queryKey: ['ack-freshness', alertId], queryFn: () => getAckFreshness(alertId) })
+  const auth = useContext(AuthContext)
+  const freshnessQuery = useQuery({ queryKey: ['ack-freshness', alertId], queryFn: () => getAckFreshness(alertId), refetchInterval: 10000 })
   if (!freshnessQuery.data) return null
   const { acknowledgedUserIds, lastAcknowledgedAt, isStale } = freshnessQuery.data
   return (
     <span className="alert-meta" style={isStale ? { color: 'var(--color-alert)' } : undefined}>
       {' '}
       · 확인 {acknowledgedUserIds.length}명{lastAcknowledgedAt ? ` · 최근 ${formatTime(lastAcknowledgedAt)}` : ''}
+      {auth?.user && (acknowledgedUserIds.includes(auth.user.userId) ? ' · 내 확인 완료' : ' · 내 확인 대기')}
     </span>
   )
 }
@@ -68,13 +72,19 @@ export function ResponderAlertsPanel({ incidentId, isCommsLead }: { incidentId: 
   const [warningMessage, setWarningMessage] = useState('')
 
   const alertsQuery = useQuery({ queryKey: ['alerts', incidentId], queryFn: () => listAlerts(incidentId), refetchInterval: 10000 })
+  const receiptQuery = useQuery({
+    queryKey: ['alert-receipts', incidentId, alertsQuery.dataUpdatedAt],
+    queryFn: () => receiveAlerts(incidentId, (alertsQuery.data ?? []).map(alert => alert.alertId)),
+    enabled: Boolean(alertsQuery.data?.length) && !alertsQuery.isError,
+    retry: 2,
+  })
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['alerts', incidentId] })
 
   const entryMutation = useMutation({
     mutationFn: () => postEntryInfo(incidentId, { infoCategory, locationLabel, statusTag, message: entryMessage || undefined }),
-    onSuccess: () => {
-      setSuccess('진입정보를 공유했습니다.')
+    onSuccess: (result) => {
+      setSuccess(result.queued ? '오프라인 보관했습니다. 연결되면 공유합니다.' : '진입정보를 공유했습니다.')
       setError(null)
       setLocationLabel('')
       setEntryMessage('')
@@ -95,8 +105,8 @@ export function ResponderAlertsPanel({ incidentId, isCommsLead }: { incidentId: 
         })
       return postSupplyRequest(incidentId, requestedItems)
     },
-    onSuccess: () => {
-      setSuccess('지원요청을 보냈습니다.')
+    onSuccess: (result) => {
+      setSuccess(result.queued ? '오프라인 보관했습니다. 연결되면 요청합니다.' : '지원요청을 보냈습니다.')
       setError(null)
       setItems('')
       invalidate()
@@ -106,8 +116,8 @@ export function ResponderAlertsPanel({ incidentId, isCommsLead }: { incidentId: 
 
   const warningMutation = useMutation({
     mutationFn: () => postRiskWarning(incidentId, { channel: 'TEXT', message: warningMessage }),
-    onSuccess: () => {
-      setSuccess('위험정보를 발송했습니다.')
+    onSuccess: (result) => {
+      setSuccess(result.queued ? '오프라인 보관했습니다. 연결 즉시 발송합니다.' : '위험정보를 발송했습니다.')
       setError(null)
       setWarningMessage('')
       invalidate()
@@ -117,7 +127,8 @@ export function ResponderAlertsPanel({ incidentId, isCommsLead }: { incidentId: 
 
   const ackMutation = useMutation({
     mutationFn: (alertId: string) => acknowledgeAlert(alertId),
-    onSuccess: (_data, alertId) => queryClient.invalidateQueries({ queryKey: ['ack-freshness', alertId] }),
+    onSuccess: (result, alertId) => { if(result.queued)setSuccess('확인을 오프라인 보관했습니다. 연결되면 전송합니다.'); else queryClient.invalidateQueries({ queryKey: ['ack-freshness', alertId] }) },
+    onError: () => setError('확인이 저장되지 않았습니다. 연결 후 다시 눌러주세요.'),
   })
 
   function handleSubmit(e: FormEvent) {
@@ -251,8 +262,10 @@ export function ResponderAlertsPanel({ incidentId, isCommsLead }: { incidentId: 
 
         {/* 실시간 알림 피드 — 새 알림이 도착하면 스크린 리더 사용자에게도 낭독되도록 aria-live로 감싼다. */}
         <div aria-live="polite">
+          {alertsQuery.isError && <Banner kind="error" message="알림 동기화 실패. 연결 후 자동으로 재시도합니다." />}
+          {receiptQuery.isError && <Banner kind="error" message="앱 수신 기록 전송에 실패했습니다. 자동으로 재시도합니다." />}
           {alertsQuery.isLoading && <div className="spinner-text">불러오는 중…</div>}
-          {alerts.length === 0 && !alertsQuery.isLoading && <div className="spinner-text">아직 알림이 없습니다.</div>}
+          {alerts.length === 0 && !alertsQuery.isLoading && !alertsQuery.isError && <div className="spinner-text">아직 알림이 없습니다.</div>}
           {alerts.map((alert) => (
             <div key={alert.alertId} className="alert-item">
               <div>

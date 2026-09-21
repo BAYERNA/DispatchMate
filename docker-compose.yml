@@ -1,5 +1,7 @@
 # FAIND 로컬 개발용 Docker Compose. 6개 런타임 전체를 한 번에 기동한다.
 # (기술스택 §2.9: 데모 규모는 Docker Compose로 충분, Kubernetes는 실서비스 확장 시점의 로드맵)
+# + prometheus/grafana: backend가 노출하던 /actuator/prometheus를 실제로 수집·시각화한다
+# (http://localhost:3000, admin/faind).
 #
 # 3개 프론트엔드(admin-web/commander-tablet/responder-app)는 각자 nginx.conf로 /api, /notify,
 # /socket.io, /ai-stream을 backend/notification-server/ai-server로 프록시한다 — dev server의
@@ -13,7 +15,7 @@ services:
     environment:
       POSTGRES_DB: faind
       POSTGRES_USER: faind
-      POSTGRES_PASSWORD: faind
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env}
     ports:
       - "5432:5432"
     volumes:
@@ -47,12 +49,14 @@ services:
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/faind
       DB_USERNAME: faind
-      DB_PASSWORD: faind
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env}
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      JWT_SECRET: faind-local-development-secret-key-change-in-production-0123456789
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the root .env}
       AI_SERVER_BASE_URL: http://ai-server:8001
       NOTIFICATION_SERVER_BASE_URL: http://notification-server:3001
+      INTERNAL_WEBHOOK_TOKEN: ${INTERNAL_WEBHOOK_TOKEN:?Set INTERNAL_WEBHOOK_TOKEN in the root .env}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?Set INTERNAL_SERVICE_TOKEN in the root .env}
       # 3개 프론트엔드는 각자 nginx 오리진(8081/8082/8083)에서 서빙되는데, 브라우저는 same-origin
       # POST 요청에도 Origin 헤더를 붙인다 — backend 기본값(dev server 포트 5173~5175)만 허용하면
       # Spring Security CORS 필터가 이 요청들을 403으로 막는다. 두 세트 다 허용해야 dev/compose
@@ -72,6 +76,8 @@ services:
     container_name: faind-ai-server
     environment:
       FAIND_BACKEND_BASE_URL: http://backend:8080
+      FAIND_BACKEND_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?Set INTERNAL_SERVICE_TOKEN in the root .env}
+      FAIND_CAMERA_ALLOWED_HOSTS: ${FAIND_CAMERA_ALLOWED_HOSTS:-}
     ports:
       - "8001:8001"
 
@@ -90,9 +96,29 @@ services:
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_USERNAME: faind
-      DB_PASSWORD: faind
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env}
       DB_NAME: faind
-      JWT_SECRET: faind-local-development-secret-key-change-in-production-0123456789
+      BACKEND_BASE_URL: http://backend:8080
+      INTERNAL_WEBHOOK_TOKEN: ${INTERNAL_WEBHOOK_TOKEN:?Set INTERNAL_WEBHOOK_TOKEN in the root .env}
+      SMS_GATEWAY_URL: ${SMS_GATEWAY_URL:-}
+      VOICE_GATEWAY_URL: ${VOICE_GATEWAY_URL:-}
+      MULTICHANNEL_TOKEN: ${MULTICHANNEL_TOKEN:-}
+      INTERAGENCY_WEBHOOK_URL: ${INTERAGENCY_WEBHOOK_URL:-}
+      INTERAGENCY_TOKEN: ${INTERAGENCY_TOKEN:-}
+      PUSH_GATEWAY_URL: ${PUSH_GATEWAY_URL:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      SECRET_PROVIDER: ${SECRET_PROVIDER:-env}
+      SECURITY_FAIL_CLOSED: ${SECURITY_FAIL_CLOSED:-true}
+      MTLS_CERT_PATH: ${MTLS_CERT_PATH:-}
+      MTLS_KEY_PATH: ${MTLS_KEY_PATH:-}
+      MTLS_CA_PATH: ${MTLS_CA_PATH:-}
+      REQUIRE_PROVIDER_MTLS: ${REQUIRE_PROVIDER_MTLS:-false}
+      VAULT_ADDR: ${VAULT_ADDR:-}
+      VAULT_ROLE: ${VAULT_ROLE:-}
+      KMS_KEY_ID: ${KMS_KEY_ID:-}
+      MULTICHANNEL_TOKEN_FILE: ${MULTICHANNEL_TOKEN_FILE:-}
+      INTERAGENCY_TOKEN_FILE: ${INTERAGENCY_TOKEN_FILE:-}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the root .env}
     ports:
       - "3001:3001"
 
@@ -106,6 +132,8 @@ services:
     platform: linux/amd64
     container_name: faind-admin-web
     depends_on:
+      notification-server:
+        condition: service_started
       backend:
         condition: service_healthy
     ports:
@@ -129,6 +157,8 @@ services:
     build:
       context: .
       dockerfile: responder-app/Dockerfile
+      args:
+        VITE_WEB_PUSH_PUBLIC_KEY: ${VITE_WEB_PUSH_PUBLIC_KEY:-}
     platform: linux/amd64
     container_name: faind-responder-app
     depends_on:
@@ -139,5 +169,43 @@ services:
     ports:
       - "8083:80"
 
+  # backend가 노출하지만 아무도 보지 않던 /actuator/prometheus(CircuitBreaker 상태 등)를
+  # 실제로 시계열로 쌓고(prometheus) 대시보드로 보여준다(grafana) — 로그를 뒤지지 않고도
+  # aiServer/notificationServer 서킷 open 여부를 한눈에 볼 수 있다.
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: faind-prometheus
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    # codex 브랜치 병합 이후 /actuator/prometheus도 다른 내부 서비스 엔드포인트와 동일하게
+    # INTERNAL_SERVICE_TOKEN 없이는 503로 거부된다 — 스크레이핑에 필요한 토큰을 시크릿 파일로
+    # 건네고, monitoring/prometheus.yml의 authorization.credentials_file이 그 파일을 읽는다.
+    secrets:
+      - internal_service_token
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: faind-grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: faind
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+
 volumes:
   faind-postgres-data:
+
+secrets:
+  internal_service_token:
+    environment: INTERNAL_SERVICE_TOKEN

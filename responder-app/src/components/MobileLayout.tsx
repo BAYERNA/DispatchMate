@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import './MobileLayout.css'
+import { AccessibilityControls } from './AccessibilityControls'
+import { DeviceAssurance } from './DeviceAssurance'
 
 const NAV_ITEMS = [
   { to: '/', label: 'USR-001 현장', end: true },
@@ -44,6 +46,8 @@ export function MobileLayout({ children, title, screenId, onBack, wsConnected }:
           <span className="mobile-user">
             {user?.name} <span className="tag role-responder">RESPONDER</span>
           </span>
+          <AccessibilityControls />
+          <DeviceAssurance />
           <button type="button" className="wf-btn small" onClick={logout}>
             로그아웃
           </button>

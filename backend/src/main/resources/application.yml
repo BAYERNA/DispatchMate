@@ -36,8 +36,9 @@ management:
     web:
       exposure:
         # metrics/prometheus는 PUBLIC_ENDPOINTS에 없어서 SecurityConfig 기본 규칙(anyRequest
-        # authenticated)에 걸려 로그인 없이는 못 본다 — CircuitBreaker 상태를 노출하는 엔드포인트라
-        # health와 달리 인증 없이 열어줄 이유가 없다.
+        # authenticated)에 걸린다 — CircuitBreaker 상태를 노출하는 엔드포인트라 health와 달리
+        # 로그인 없이는 못 본다. Prometheus 서버는 InternalServiceAuthFilter가 보는
+        # /actuator/prometheus 전용 내부 토큰으로만 스크레이핑한다(SecurityConfig 참고).
         include: health,info,metrics,prometheus
   endpoint:
     health:
@@ -55,8 +56,7 @@ faind:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:3000}
   security:
     # ai-server → backend 콜백(FR-24 cctv-detections, FR-26 recon-result) 전용 공유 토큰.
-    # ai-server의 FAIND_BACKEND_SERVICE_TOKEN과 동일한 값을 넣어야 한다. 비워두면(로컬 데모 기본값)
-    # InternalServiceAuthFilter가 검증을 생략한다 — notification-server의 INTERNAL_WEBHOOK_TOKEN과 동일한 관용.
+    # ai-server의 FAIND_BACKEND_SERVICE_TOKEN과 동일한 값을 넣어야 한다. 비워두면 503으로 거부한다.
     internal-service-token: ${INTERNAL_SERVICE_TOKEN:}
   routing:
     ground-vehicle-avg-speed-kmh: 40
@@ -74,6 +74,7 @@ faind:
       base-url: ${AI_SERVER_BASE_URL:http://localhost:8001}
     notification-server:
       base-url: ${NOTIFICATION_SERVER_BASE_URL:http://localhost:3001}
+      token: ${INTERNAL_WEBHOOK_TOKEN:}
     public-data:
       base-url: ${PUBLIC_DATA_BASE_URL:https://apis.data.go.kr}
       service-key: ${PUBLIC_DATA_SERVICE_KEY:}

@@ -1,6 +1,16 @@
 import { notifyRequest } from './client'
 import type { AckFreshnessResponse, AlertResponse } from '../types'
 
+export interface AlertDeliveryStatus {
+  alertId: string
+  tracked: boolean
+  recipients: { userId: string; name: string; queuedAt: string; receivedAt: string | null; acknowledgedAt: string | null }[]
+}
+
+export function getDeliveryStatus(incidentId: string): Promise<AlertDeliveryStatus[]> {
+  return notifyRequest(`/incidents/${incidentId}/alerts/delivery-status`)
+}
+
 // CMD-002 알림 피드
 export function listAlerts(incidentId: string): Promise<AlertResponse[]> {
   return notifyRequest<AlertResponse[]>(`/incidents/${incidentId}/alerts`)

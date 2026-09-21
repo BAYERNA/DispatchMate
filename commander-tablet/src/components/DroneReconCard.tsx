@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { SecureCamera } from './SecureCamera'
+import { freshDanger } from '../freshDanger'
+import { useNow } from '../useNow'
 import { buildLiveStreamUrl, getDevice, getLiveDanger } from '../api/devices'
 import { DANGER_CLASS, DANGER_LABEL, DANGER_POLL_INTERVAL_MS } from '../dangerDisplay'
 import type { AiJudgmentSummaryResponse, DroneDispatchResponse } from '../types'
@@ -30,7 +32,7 @@ export function DroneReconCard({
   dispatch: DroneDispatchResponse
   judgments: AiJudgmentSummaryResponse[]
 }) {
-  const [videoFailed, setVideoFailed] = useState(false)
+  const videoFailed = false
   const deviceQuery = useQuery({ queryKey: ['device', dispatch.droneId], queryFn: () => getDevice(dispatch.droneId) })
   const relatedJudgments = judgments.filter((j) => j.sourceDeviceId === dispatch.droneId)
 
@@ -44,7 +46,8 @@ export function DroneReconCard({
     refetchInterval: DANGER_POLL_INTERVAL_MS,
     retry: false,
   })
-  const danger = dangerQuery.data
+  const now = useNow()
+  const danger = freshDanger(dangerQuery.data, dangerQuery.isError, dangerQuery.dataUpdatedAt, now)
 
   return (
     <div className="wf" style={{ marginBottom: 10 }}>
@@ -68,18 +71,17 @@ export function DroneReconCard({
                 영상 연결 실패 — 드론 전원·네트워크를 확인하세요.
               </div>
             ) : (
-              <img
+              <SecureCamera
                 alt={`드론 ${deviceQuery.data?.serialNo ?? dispatch.droneId.slice(0, 8)} 실시간 영상`}
-                src={buildLiveStreamUrl(streamUrl!)}
+                src={buildLiveStreamUrl(dispatch.droneId)}
                 style={{ width: '100%', borderRadius: 6, border: '1px solid var(--color-border-soft)', display: 'block' }}
-                onError={() => setVideoFailed(true)}
               />
             )}
             {!videoFailed && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 12 }}>
                 {danger ? (
                   <span className={`tag ${DANGER_CLASS[danger.dangerLevel] ?? ''}`}>
-                    {DANGER_LABEL[danger.dangerLevel] ?? danger.dangerLevel} · {Math.round(danger.dangerScore)}
+                    {DANGER_LABEL[danger.dangerLevel] ?? '판단 불가'}{danger.dangerLevel === 'UNKNOWN' ? ` · ${danger.reason ?? '분석 불가'}` : ` · ${Math.round(danger.dangerScore)}`}
                   </span>
                 ) : dangerQuery.isError ? (
                   <span style={{ color: 'var(--color-ink-soft)' }}>위험도 확인 실패</span>

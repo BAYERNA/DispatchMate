@@ -61,7 +61,7 @@ class DetectionResult:
     label: Optional[str] = None
     reason: Optional[str] = None
     area_ratio: float = 0.0
-    danger_level: str = "SAFE"
+    danger_level: str = "UNKNOWN"
     danger_score: float = 0.0
     # None = 판단 보류(샘플 부족, 정지 이미지 등) / True = 진짜로 판단 / False = 오탐 의심
     is_flicker_verified: Optional[bool] = None

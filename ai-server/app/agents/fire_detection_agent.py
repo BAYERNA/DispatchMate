@@ -7,6 +7,7 @@ drone recon 결과 기록)은 부수효과이므로 api/v1/fire_detection_router
 """
 
 import logging
+import asyncio
 from typing import Optional
 
 from langgraph.graph import END, StateGraph
@@ -73,12 +74,17 @@ class FireDetectionAgent(BaseAgent):
             state["confidence"] = 0.0
             state["label"] = None
             state["reason"] = state.get("acquire_error", "알 수 없는 오류로 감지를 수행하지 못했습니다.")
-            state["danger_level"] = "SAFE"
+            state["danger_level"] = "UNKNOWN"
             state["danger_score"] = 0.0
             return state
 
         camera_id = str(state.get("device_id") or "unknown")
-        result = self.yolo_service.detect_fire_burst(frames, camera_id)
+        try:
+            result = await asyncio.to_thread(self.yolo_service.detect_fire_burst, frames, camera_id)
+        except Exception:
+            logger.exception("화재 분석 실패")
+            return {**state, "detected": False, "confidence": 0.0, "danger_level": "UNKNOWN",
+                    "danger_score": 0.0, "reason": "분석을 수행하지 못했습니다.", "snapshot_base64": None}
         state["detected"] = result.detected
         state["confidence"] = result.confidence
         state["label"] = result.label

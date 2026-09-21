@@ -9,8 +9,8 @@ import { AlertAcknowledgement } from './entities/alert-acknowledgement.entity';
 const ALERT_ACKNOWLEDGED_EVENT = 'alert:acknowledged';
 const STALE_MINUTES_THRESHOLD = 10;
 
-// FR-22: 인수인계 확인 흐름 (등록→수신→확인). DB설계서 §3.8 — 같은 alert를 여러 명이,
-// 또는 재확인으로 여러 번 기록할 수 있다.
+// FR-22: 최초 확인을 기록한다. 동일 사용자의 재시도는 기존 확인을 반환한다.
+// 이전 버전이 저장한 재확인 이력은 보존한다.
 @Injectable()
 export class AckService {
   constructor(
@@ -25,16 +25,23 @@ export class AckService {
     if (!alert) {
       throw new NotFoundException('해당 알림을 찾을 수 없습니다.');
     }
-    const ack = await this.ackRepository.save(this.ackRepository.create({ alertId, userId }));
+    const ack = await this.ackRepository.manager.transaction(async manager => {
+      // Serialize retries across tabs/workers without deleting historical confirmations.
+      await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`${alertId}:${userId}`]);
+      const repository = manager.getRepository(AlertAcknowledgement);
+      const existing = await repository.findOne({ where: { alertId, userId }, order: { acknowledgedAt: 'DESC' } });
+      return existing ?? repository.save(repository.create({ alertId, userId }));
+    });
     this.gateway.broadcastToIncident(alert.incidentId, ALERT_ACKNOWLEDGED_EVENT, {
       alertId,
       userId,
       acknowledgedAt: ack.acknowledgedAt,
+      targetUserId: alert.targetUserId,
     });
     return ack;
   }
 
-  // CMD-002 annot#3: 확인자 목록 + "N분 전 확인, 갱신 필요" 신선도 표시.
+  // 확인자 목록과 확인 기록의 경과 시간을 제공한다.
   async getFreshness(alertId: string): Promise<FreshnessDto> {
     const acks = await this.ackRepository.find({ where: { alertId }, order: { acknowledgedAt: 'DESC' } });
     const lastAcknowledgedAt = acks[0]?.acknowledgedAt ?? null;

@@ -29,10 +29,12 @@ public class SecurityConfig {
     "/v3/api-docs/**"
   };
 
-  // ai-server 콜백 전용 — 로그인 사용자 JWT 대신 InternalServiceAuthFilter가 별도 토큰으로 검증한다.
+  // ai-server 콜백 + Prometheus 스크레이핑 전용 — 로그인 사용자 JWT 대신
+  // InternalServiceAuthFilter가 별도 토큰으로 검증한다(토큰 미설정 시 로컬 데모 기본값으로 검증 생략).
   private static final String[] INTERNAL_SERVICE_ENDPOINTS = {
     "/api/v1/incidents/dispatch/cctv-detections",
-    "/api/v1/incidents/drone-dispatches/*/recon-result"
+    "/api/v1/incidents/drone-dispatches/*/recon-result",
+    "/actuator/prometheus"
   };
 
   private final JwtAuthFilter jwtAuthFilter;

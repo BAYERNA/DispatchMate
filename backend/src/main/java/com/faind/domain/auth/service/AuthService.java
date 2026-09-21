@@ -58,7 +58,7 @@ public class AuthService {
     }
 
     redisTemplate.delete(attemptKey);
-    String accessToken = jwtTokenProvider.createToken(user.getUserId(), user.getBadgeNumber(), user.getRole());
+    String accessToken = jwtTokenProvider.createToken(user.getUserId(), user.getBadgeNumber(), user.getRole(), user.getTokenVersion());
     return new LoginResponse(accessToken, user.getUserId(), user.getName(), user.getRole(), user.isInitialPassword());
   }
 

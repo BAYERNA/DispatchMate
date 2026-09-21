@@ -81,7 +81,7 @@ class AuthServiceTest {
     when(valueOperations.get("login:attempts:B0001")).thenReturn("2");
     when(userRepository.findByBadgeNumber("B0001")).thenReturn(Optional.of(activeUser()));
     when(passwordEncoder.matches("correct", "encoded-hash")).thenReturn(true);
-    when(jwtTokenProvider.createToken(null, "B0001", "RESPONDER")).thenReturn("issued-token");
+    when(jwtTokenProvider.createToken(null, "B0001", "RESPONDER", 0)).thenReturn("issued-token");
 
     var response = authService.login(new LoginRequest("B0001", "correct"));
 

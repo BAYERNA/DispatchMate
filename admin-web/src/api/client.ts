@@ -55,6 +55,10 @@ export function apiRequest<T>(path: string, options: RequestOptions = {}): Promi
   return request(path, options)
 }
 
+export function notifyRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  return request(`/notify${path}`, options)
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = getStoredToken()
   const response = await fetch(buildUrl(path, options.query), {

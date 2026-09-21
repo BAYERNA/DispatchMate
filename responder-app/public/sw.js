@@ -1,0 +1,2 @@
+self.addEventListener('push',event=>{let data={};try{data=event.data?.json()??{}}catch{data={message:event.data?.text()}}event.waitUntil(self.registration.showNotification(data.title??'출동메이트 긴급 알림',{body:data.message??'새 현장 알림이 도착했습니다.',tag:data.alertId??'dispatchmate-alert',requireInteraction:true,data:{url:data.url??'/'}}))})
+self.addEventListener('notificationclick',event=>{event.notification.close();event.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(windows=>windows[0]?.focus()??clients.openWindow(event.notification.data?.url??'/')))})
