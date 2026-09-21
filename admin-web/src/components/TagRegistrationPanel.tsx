@@ -1,0 +1,4 @@
+import { useMutation } from '@tanstack/react-query'
+import { useState } from 'react'
+import { addTag } from '../api/intelligence'
+export function TagRegistrationPanel(){const[resourceId,setResourceId]=useState(''),[tag,setTag]=useState(''),m=useMutation({mutationFn:()=>addTag({resourceId,tagType:'QR',tagValue:tag}),onSuccess:()=>setTag('')});return <div className="wf" style={{marginTop:14}}><div className="wf-header"><span>QR/RFID 장비 태그</span></div><div className="wf-body"><div className="form-row"><input className="wf-field" value={resourceId} onChange={e=>setResourceId(e.target.value)} placeholder="자원 UUID"/><input className="wf-field" value={tag} onChange={e=>setTag(e.target.value)} placeholder="QR/RFID 값"/><button className="wf-btn" onClick={()=>resourceId&&tag&&m.mutate()}>QR 태그 등록</button></div>{m.isSuccess&&<div className="banner success">태그가 등록되었습니다.</div>}</div></div>}

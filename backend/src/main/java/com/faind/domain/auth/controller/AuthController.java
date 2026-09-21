@@ -25,6 +25,12 @@ public class AuthController {
     this.authService = authService;
   }
 
+  // Other services revalidate against current account state, not only the JWT signature.
+  @org.springframework.web.bind.annotation.GetMapping("/session")
+  public AuthenticatedUser session(@CurrentUser AuthenticatedUser currentUser) {
+    return currentUser;
+  }
+
   @PostMapping("/login")
   public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
     return ResponseEntity.ok(authService.login(request));

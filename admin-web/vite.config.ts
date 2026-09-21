@@ -15,6 +15,11 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      '/notify': {
+        target: process.env.VITE_NOTIFICATION_URL ?? 'http://localhost:3001',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/notify/, ''),
+      },
       '/api': {
         target: process.env.VITE_BACKEND_URL ?? 'http://localhost:8080',
         changeOrigin: true,

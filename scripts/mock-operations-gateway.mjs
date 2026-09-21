@@ -1,0 +1,4 @@
+import { createServer } from 'node:http'
+const port=Number(process.env.MOCK_GATEWAY_PORT??4010),token=process.env.MOCK_GATEWAY_TOKEN
+const server=createServer((request,response)=>{if(request.method!=='POST'){response.writeHead(405).end();return}if(token&&request.headers.authorization!==`Bearer ${token}`){response.writeHead(401).end();return}let raw='';request.on('data',chunk=>raw+=chunk);request.on('end',()=>{let body;try{body=JSON.parse(raw)}catch{response.writeHead(400).end();return}const kind=request.url?.slice(1);if(!['push','sms','voice','interagency','route'].includes(kind??'')){response.writeHead(404).end();return}process.stdout.write(`${new Date().toISOString()} ${kind} ${JSON.stringify(body)}\n`);response.writeHead(202,{'Content-Type':'application/json'}).end(JSON.stringify({accepted:true,providerMessageId:crypto.randomUUID()}))})})
+server.listen(port,'127.0.0.1',()=>process.stdout.write(`mock operations gateway http://127.0.0.1:${port}\n`))

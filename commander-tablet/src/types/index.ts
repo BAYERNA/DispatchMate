@@ -143,7 +143,7 @@ export interface CameraResponse {
 
 // CMD-002 라이브 카메라 뷰의 위험도 배지(FR-24/26 Phase 3) — ai-server GET /streams/danger 응답.
 // callbackSent/incidentId는 이 경로에서 항상 false/null(콜백을 보내지 않으므로) 이라 UI에서 쓰지 않는다.
-export type DangerLevel = 'SAFE' | 'WARNING' | 'DANGER' | 'CRITICAL'
+export type DangerLevel = 'UNKNOWN' | 'SAFE' | 'WARNING' | 'DANGER' | 'CRITICAL'
 
 export interface LiveDangerSnapshot {
   detected: boolean

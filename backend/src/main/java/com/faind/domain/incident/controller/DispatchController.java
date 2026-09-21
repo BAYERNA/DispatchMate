@@ -35,7 +35,7 @@ public class DispatchController {
 
   // ai-server(fire_detection_router)가 CCTV 화재 의심을 감지했을 때 호출하는 콜백.
   // 로그인 사용자 JWT 대신 InternalServiceAuthFilter가 faind.security.internal-service-token으로
-  // 검증한다 (미설정 시 로컬 데모 편의상 검증 생략 — notification-server의 InternalWebhookGuard와 동일).
+  // 검증한다 (미설정 시 503으로 거부).
   @PostMapping("/cctv-detections")
   public ResponseEntity<UUID> receiveCctvDetection(@Valid @RequestBody CctvDetectionRequest request) {
     return ResponseEntity.ok(cctvDetectionService.receiveDetection(request, "AUTO"));

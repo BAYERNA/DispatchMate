@@ -1,3 +1,6 @@
 # 프론트엔드 3개(admin-web/commander-tablet/responder-app) + packages/design-system을 묶는
 # npm workspace 루트에서 생기는 산출물. 각 앱 자체 소스는 여전히 앱별 .gitignore가 담당한다.
 node_modules
+.env
+
+/backups/

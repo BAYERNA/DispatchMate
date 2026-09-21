@@ -44,6 +44,11 @@ public class User {
   @Column(nullable = false, length = 10)
   private String status = "ACTIVE"; // ACTIVE / INACTIVE
 
+  @Column(name = "token_version", nullable = false)
+  private long tokenVersion;
+
+  public long getTokenVersion() { return tokenVersion; }
+
   @Column(name = "created_at", nullable = false)
   private LocalDateTime createdAt;
 
@@ -67,6 +72,7 @@ public class User {
   // FR-10: 계정 수정 — QA에서 "수정 시 기존 정보가 프리필되지 않음"이 확인된 지점이라
   // 조회한 엔티티를 그대로 갱신하는 방식으로, 누락 없이 전체 필드를 다시 채운다.
   public void update(String name, String team, String phone, String role) {
+    if (!java.util.Objects.equals(this.role, role)) tokenVersion++;
     this.name = name;
     this.team = team;
     this.phone = phone;
@@ -75,6 +81,7 @@ public class User {
   }
 
   public void resetPassword(String newPasswordHash) {
+    tokenVersion++;
     this.passwordHash = newPasswordHash;
     this.initialPassword = true;
     this.updatedAt = LocalDateTime.now();
@@ -87,6 +94,7 @@ public class User {
   }
 
   public void deactivate() {
+    tokenVersion++;
     this.status = "INACTIVE";
     this.updatedAt = LocalDateTime.now();
   }

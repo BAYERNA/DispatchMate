@@ -8,6 +8,14 @@ import { DroneReconCard } from '../components/DroneReconCard'
 import { LiveCameraPanel } from '../components/LiveCameraPanel'
 import { AlertsPanel } from '../components/AlertsPanel'
 import { AssignResponderPanel } from '../components/AssignResponderPanel'
+import { IncidentTimeline } from '../components/IncidentTimeline'
+import { OperationsMap } from '../components/OperationsMap'
+import { AiFeedbackPanel } from '../components/AiFeedbackPanel'
+import { MissionControlPanel } from '../components/MissionControlPanel'
+import { AdvancedCommandPanel } from '../components/AdvancedCommandPanel'
+import { PatientHandoverPanel } from '../components/PatientHandoverPanel'
+import { GovernanceCommandPanel } from '../components/GovernanceCommandPanel'
+import { DecisionSupportPanel } from '../components/DecisionSupportPanel'
 import { CloseConfirmDialog } from '../components/CloseConfirmDialog'
 import { closeIncident, getAiJudgments, getMonitoring, reassignCommsLead } from '../api/incidents'
 import { getAccount } from '../api/accounts'
@@ -150,6 +158,7 @@ export function IncidentMonitoringPage() {
           <div className="monitoring-layout">
             <div>
               <LiveCameraPanel incidentId={incidentId} />
+              <div className="wf" style={{marginBottom:14}}><div className="wf-header"><span>작전 위치</span></div><div className="wf-body"><OperationsMap incidentId={incidentId}/></div></div>
 
               <div className="wf" style={{ marginBottom: 14 }}>
                 <div className="wf-header">
@@ -208,6 +217,13 @@ export function IncidentMonitoringPage() {
 
             <div>
               <AlertsPanel incidentId={incidentId} assignments={data.assignments} />
+              <AiFeedbackPanel judgments={judgments}/>
+              <IncidentTimeline incidentId={incidentId}/>
+              <MissionControlPanel incidentId={incidentId} assignments={data.assignments}/>
+              <AdvancedCommandPanel incidentId={incidentId}/>
+              <PatientHandoverPanel incidentId={incidentId}/>
+              <GovernanceCommandPanel incidentId={incidentId}/>
+              <DecisionSupportPanel incidentId={incidentId}/>
             </div>
           </div>
         </>

@@ -80,6 +80,12 @@
   gap: 6px;
   margin-bottom: 10px;
 }
+.timeline-item { border-left: 3px solid var(--color-line); padding: 7px 10px; margin-bottom: 5px; font-size: 12px; }
+.operations-map { width: 100%; min-height: 260px; background: var(--color-fill); border: 1px solid var(--color-border-soft); }
+.operations-map rect { fill: transparent; stroke: var(--color-border-soft); }
+.operations-map circle { fill: var(--color-drone); stroke: var(--color-panel); stroke-width: 1; }
+.operations-map .incident-dot { fill: var(--color-alert); }
+.operations-map text { text-anchor: middle; font-size: 3px; fill: var(--color-ink); }
 
 .modal-backdrop {
   position: fixed;

@@ -1,6 +1,8 @@
 # 빌드 컨텍스트가 리포지토리 루트다 — packages/design-system(3개 프론트엔드 공유 CSS)가
 # npm workspace로 responder-app에 링크돼 있어서, responder-app 디렉터리만으로는 빌드할 수 없다.
 FROM node:22-alpine AS build
+ARG VITE_WEB_PUSH_PUBLIC_KEY
+ENV VITE_WEB_PUSH_PUBLIC_KEY=$VITE_WEB_PUSH_PUBLIC_KEY
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages ./packages

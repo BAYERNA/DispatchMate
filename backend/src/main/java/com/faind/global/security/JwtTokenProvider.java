@@ -26,12 +26,17 @@ public class JwtTokenProvider {
   }
 
   public String createToken(UUID userId, String badgeNumber, String role) {
+    return createToken(userId, badgeNumber, role, 0);
+  }
+
+  public String createToken(UUID userId, String badgeNumber, String role, long tokenVersion) {
     Date now = new Date();
     Date expiry = new Date(now.getTime() + expirationMillis);
     return Jwts.builder()
         .subject(userId.toString())
         .claim("badgeNumber", badgeNumber)
         .claim("role", role)
+        .claim("tokenVersion", tokenVersion)
         .issuedAt(now)
         .expiration(expiry)
         .signWith(key)

@@ -7,6 +7,7 @@ import { SetInitialPasswordPage } from './pages/SetInitialPasswordPage'
 import { ActiveIncidentsPage } from './pages/ActiveIncidentsPage'
 import { IncidentMonitoringPage } from './pages/IncidentMonitoringPage'
 import { ResponderDetailPage } from './pages/ResponderDetailPage'
+import { TrainingPage } from './pages/TrainingPage'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -19,6 +20,10 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route
+              path="/training"
+              element={<RequireAuth><TrainingPage /></RequireAuth>}
+            />
             <Route
               path="/initial-password"
               element={

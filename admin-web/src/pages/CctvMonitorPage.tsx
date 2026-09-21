@@ -3,6 +3,9 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AdminLayout } from '../components/AdminLayout'
 import { Banner } from '../components/Banner'
+import { SecureCamera } from '../components/SecureCamera'
+import { freshDanger } from '../freshDanger'
+import { useNow } from '../useNow'
 import { buildLiveStreamDebugUrl, buildLiveStreamUrl, getCameras, getLiveDanger } from '../api/devices'
 import { registerManualDetection } from '../api/incidents'
 import { ApiError } from '../api/client'
@@ -14,8 +17,9 @@ const MANUAL_DETECTION_THRESHOLD: Record<string, boolean> = { DANGER: true, CRIT
 
 const DANGER_POLL_INTERVAL_MS = 8000
 
-const DANGER_LABEL: Record<string, string> = { SAFE: '안전', WARNING: '주의', DANGER: '위험', CRITICAL: '심각' }
+const DANGER_LABEL: Record<string, string> = { UNKNOWN: '판단 불가', SAFE: '미검출', WARNING: '주의', DANGER: '위험', CRITICAL: '심각' }
 const DANGER_CLASS: Record<string, string> = {
+  UNKNOWN: 'risk-caution',
   SAFE: 'risk-normal',
   WARNING: 'risk-caution',
   DANGER: 'risk-danger',
@@ -56,14 +60,14 @@ function CameraTile({ camera, danger, dangerError }: { camera: CameraResponse; d
         <span>{camera.serialNo}</span>
         {danger && (
           <span className={`tag ${DANGER_CLASS[danger.dangerLevel] ?? ''}`}>
-            {DANGER_LABEL[danger.dangerLevel] ?? danger.dangerLevel} · {Math.round(danger.dangerScore)}
+            {DANGER_LABEL[danger.dangerLevel] ?? '판단 불가'}{danger.dangerLevel !== 'UNKNOWN' && ` · ${Math.round(danger.dangerScore)}`}
           </span>
         )}
       </div>
       <div className="wf-body" style={{ padding: 0 }}>
-        <img
+        <SecureCamera
           alt={`${camera.serialNo} 실시간 영상${showDebugBoxes ? ' (감지 박스 디버그 보기)' : ''}`}
-          src={showDebugBoxes ? buildLiveStreamDebugUrl(camera.streamUrl!) : buildLiveStreamUrl(camera.streamUrl!)}
+          src={showDebugBoxes ? buildLiveStreamDebugUrl(camera.deviceId) : buildLiveStreamUrl(camera.deviceId)}
           style={{ width: '100%', display: 'block' }}
         />
       </div>
@@ -73,9 +77,9 @@ function CameraTile({ camera, danger, dangerError }: { camera: CameraResponse; d
           감지 박스 보기 (디버그용 — 운영 판단은 위 배지를 기준으로 하세요)
         </label>
       </div>
-      {(dangerError || (danger && danger.isFlickerVerified === false)) && (
+      {(dangerError || danger?.dangerLevel === 'UNKNOWN' || (danger && danger.isFlickerVerified === false)) && (
         <div className="wf-body" style={{ paddingTop: 6, fontSize: 12, color: 'var(--color-ink-soft)' }}>
-          {dangerError ? '위험도 확인 실패' : '오탐 의심(깜빡임 없음)'}
+          {dangerError ? '위험도 확인 실패 — 안전으로 판단하지 마세요.' : danger?.dangerLevel === 'UNKNOWN' ? danger.reason ?? '분석할 수 없습니다.' : '오탐 의심(깜빡임 없음)'}
         </div>
       )}
       {showRegisterButton && (
@@ -117,6 +121,7 @@ function CameraTile({ camera, danger, dangerError }: { camera: CameraResponse; d
 // 기다리지 않고도 관제실이 직접 AI_SUSPECTED 출동을 만들 수 있다 — 정식 출동 전환(NFR-08)은
 // 여전히 오직 ADM-001의 확인·출동(role=ADMIN)에서만 이뤄진다.
 export function CctvMonitorPage() {
+  const now = useNow()
   const camerasQuery = useQuery({ queryKey: ['cameras'], queryFn: getCameras, refetchInterval: 30000 })
   const cameras = camerasQuery.data ?? []
   const withStream = cameras.filter((c) => c.streamUrl)
@@ -132,7 +137,7 @@ export function CctvMonitorPage() {
   })
 
   const tiles = withStream
-    .map((camera, i) => ({ camera, danger: dangerQueries[i]?.data, error: dangerQueries[i]?.isError ?? false }))
+    .map((camera, i) => ({ camera, danger: freshDanger(dangerQueries[i]?.data, dangerQueries[i]?.isError ?? false, dangerQueries[i]?.dataUpdatedAt ?? 0, now), error: dangerQueries[i]?.isError ?? false }))
     .sort((a, b) => (DANGER_RANK[b.danger?.dangerLevel ?? 'SAFE'] ?? 0) - (DANGER_RANK[a.danger?.dangerLevel ?? 'SAFE'] ?? 0))
 
   return (

@@ -1,0 +1,42 @@
+name: Production Assurance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: assurance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  database-policy:
+    name: V1-V14 database and field integration
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: notification-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: notification-server/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --prefix /tmp/dispatchmate-db-check @electric-sql/pglite --no-audit --no-fund
+      - run: PGLITE_ROOT=/tmp/dispatchmate-db-check/node_modules/@electric-sql/pglite node test/delivery-database.mjs
+
+  safety-gates:
+    name: deployment safety gates
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_PASSWORD: run-${{ github.run_id }}
+      JWT_SECRET: run-${{ github.run_id }}-${{ github.sha }}
+      INTERNAL_WEBHOOK_TOKEN: run-${{ github.run_id }}-webhook
+      INTERNAL_SERVICE_TOKEN: run-${{ github.run_id }}-service
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/verify-production-assurance.sh
+      - run: docker compose config --quiet

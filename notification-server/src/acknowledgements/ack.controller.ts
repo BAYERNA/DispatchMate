@@ -2,12 +2,13 @@ import { Controller, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/
 import type { AuthenticatedUser } from '../auth/authenticated-user.interface';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { IncidentAccessGuard } from '../alerts/incident-access.guard';
 import { AckService } from './ack.service';
 import { AlertAcknowledgement } from './entities/alert-acknowledgement.entity';
 import { FreshnessDto } from './dto/freshness.dto';
 
 @Controller('alerts/:alertId/acknowledgements')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, IncidentAccessGuard)
 export class AckController {
   constructor(private readonly ackService: AckService) {}
 

@@ -10,6 +10,9 @@ import { AccountFormPage } from './pages/AccountFormPage'
 import { DeviceListPage } from './pages/DeviceListPage'
 import { CctvMonitorPage } from './pages/CctvMonitorPage'
 import { StatisticsPage } from './pages/StatisticsPage'
+import { OperationsReadinessPage } from './pages/OperationsReadinessPage'
+import { OperationalIntelligencePage } from './pages/OperationalIntelligencePage'
+import { GovernancePage } from './pages/GovernancePage'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -22,6 +25,12 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route
+              path="/operations"
+              element={<RequireAuth><OperationsReadinessPage /></RequireAuth>}
+            />
+            <Route path="/intelligence" element={<RequireAuth><OperationalIntelligencePage /></RequireAuth>} />
+            <Route path="/governance" element={<RequireAuth><GovernancePage /></RequireAuth>} />
             <Route
               path="/initial-password"
               element={

@@ -34,7 +34,12 @@ npm run test
   `user:{userId}` 개인 채널에 합류하고, `join`/`leave` 메시지로 `incident:{incidentId}` 채널을
   구독/해제한다.
 - `/webhook/*`(backend 전용 인바운드)는 로그인 사용자 JWT가 아니라 `INTERNAL_WEBHOOK_TOKEN`
-  공유 비밀로 검증한다. 비워두면(로컬 기본값) 검증을 생략한다.
+  공유 비밀로 검증한다. 비워두면 503으로 거부한다. Java backend에도 같은 환경변수를 설정한다.
+
+REST와 WebSocket join/전송은 `BACKEND_BASE_URL`의 `/api/v1/auth/session`으로 현재 계정을
+재검증한다. backend 장애 시 접근을 허용하지 않는다. REST의 출동 배정·통신담당 권한은
+`IncidentAccessGuard`가, 소켓 구독/전송 권한은 같은 `IncidentAccessService`가 검증한다.
+알림 서버를 올리기 전에 backend Flyway V7을 적용해야 한다.
 
 ## REST 엔드포인트
 

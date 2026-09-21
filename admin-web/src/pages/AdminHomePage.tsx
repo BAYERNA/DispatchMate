@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { AdminLayout } from '../components/AdminLayout'
 import { Banner } from '../components/Banner'
 import { StatCard } from '../components/StatCard'
+import { ServiceStatus } from '../components/ServiceStatus'
 import { getDashboardSummary, listRecentIncidents } from '../api/incidentsDashboard'
 import { confirmIncident, listAiSuspectedQueue, rejectIncident } from '../api/incidents'
 import { ApiError } from '../api/client'
@@ -50,6 +51,7 @@ export function AdminHomePage() {
 
   return (
     <AdminLayout screenId="ADM-001" title="관리자 홈">
+      <ServiceStatus />
       {actionError && <Banner kind="error" message={actionError} />}
 
       <div className="stat-grid">

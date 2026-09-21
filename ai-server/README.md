@@ -29,15 +29,31 @@ JSON은 모두 camelCase로 주고받는다 (`app/core/camel_model.py` — Java 
 
 `ai-server → backend` 두 콜백은 로그인 사용자 JWT가 아니라 `FAIND_BACKEND_SERVICE_TOKEN` 공유 토큰으로
 인증한다. backend의 `faind.security.internal-service-token`(env: `INTERNAL_SERVICE_TOKEN`)과 반드시
-같은 값을 써야 한다 — 비워두면(둘 다 기본값) backend의 `InternalServiceAuthFilter`가 로컬 데모 편의상
-검증을 생략한다.
+같은 값을 써야 한다. backend의 토큰이 비어 있으면 콜백은 503으로 거부된다.
 
 ## LLM / 화재감지 모델이 없을 때
+
+### 인증된 카메라 API
+
+`GET /api/v1/streams/frame?device_id=<UUID>`와 `/danger?device_id=<UUID>`, `/status`는
+backend에서 현재 유효한 ADMIN/COMMANDER JWT를 Authorization 헤더로 받아야 한다.
+`/frame`의 `debug=true`는 감지 박스 미리보기다. `/status`는 서비스 응답과 모델 준비 상태를 구분한다.
+기존 `/mjpeg`, `/mjpeg-debug` 및 클라이언트가 임의 URL을 전달하는 경로는 제거했다.
+
+URL은 backend 등록 CCTV/DRONE에서 조회하며 `FAIND_CAMERA_ALLOWED_HOSTS`의 숫자 IP만 허용한다.
+HTTP(S) JPEG/MJPEG 또는 RTSP만 허용하고 파일 경로·DNS 호스트명·리다이렉트·URL 자격증명은 거부한다.
+API에는 최대 4개의 캡처 슬롯, 프레임 크기/연결 타임아웃 제한이 있다. 화면은 약 1초 간격
+미리보기이며 실제 FPS를 보장하지 않는다. `/fire-detection/analyze`도 관리자/지휘관 JWT가 필요하고,
+imageUrl이 오더라도 클라이언트 URL 대신 deviceId의 등록 URL을 사용한다.
+환경변수로 구성하는 서버 내부 CCTV 폴링은 별도이며 운영자만 설정해야 한다.
+
+### 모델 미설정 동작
 
 - `FAIND_LLM_PROVIDER=none`(기본값)이면 사전분석·SOP대조는 휴리스틱(키워드 매칭, 결정론적 추정치)으로
   동작한다 — 항상 응답은 반환하되, 실제 LLM 판단이 아님을 `source` 필드 등으로 명시한다.
 - `FAIND_YOLO_MODEL_PATH`(기본 `models/fire_yolov8.pt`)에 화재/연기로 **파인튜닝된** 가중치가 없으면
-  화재감지는 항상 `detected: false`를 반환한다. 공개 배포되는 기본 YOLOv8 가중치(COCO)는 fire/smoke
+  화재감지는 `detected: false`, `dangerLevel: UNKNOWN` 및 reason을 반환한다. 안전 판정이 아니다.
+  공개 배포되는 기본 YOLOv8 가중치(COCO)는 fire/smoke
   클래스가 없으므로, 실제로 동작하게 하려면 파인튜닝된 모델 파일을 이 경로에 둬야 한다. 저장소에는
   MIT+CC BY 4.0 라이선스의 실제 파인튜닝 모델이 이미 이 경로에 포함되어 있다 — 출처는
   `models/NOTICE.md` 참조.
@@ -47,7 +63,7 @@ JSON은 모두 camelCase로 주고받는다 (`app/core/camel_model.py` — Java 
 `FireDetectionResult`는 단순 감지 여부를 넘어 아래 신호를 함께 반환한다 (`app/services/yolo_service.py`):
 
 - `areaRatio` — 감지된 화재/연기 박스가 프레임에서 차지하는 비율
-- `dangerLevel`(SAFE/WARNING/DANGER/CRITICAL) · `dangerScore`(0~100) — confidence·area_ratio·확산 여부를
+- `dangerLevel`(UNKNOWN/SAFE/WARNING/DANGER/CRITICAL) · `dangerScore`(0~100) — confidence·area_ratio·확산 여부를
   근거로 계산. 실제 카메라 영상으로 추가 튜닝이 필요한 초기값이다.
 - `isFlickerVerified` — 정적인 붉은/회색 물체를 오탐하는 것을 줄이기 위한 필터. CCTV 폴링(스트림 URL)
   경로에서만 폴링 1회당 짧은 연속 프레임(burst, 기본 5장·0.15초 간격 — `FAIND_FIRE_BURST_*`)을 찍어

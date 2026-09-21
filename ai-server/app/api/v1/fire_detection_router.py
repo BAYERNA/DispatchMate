@@ -13,6 +13,8 @@ from app.agents.fire_detection_agent import FireDetectionAgent
 from app.core.backend_client import BackendClientError, FaindBackendClient
 from app.schemas.fire_detection_schema import DetectionSourceType, FireDetectionRequest, FireDetectionResult
 from app.services.yolo_service import YoloService
+from app.core.camera_access import require_operator, camera_url
+from app.services.safe_camera import capture_frame
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +39,7 @@ def _result_kwargs(result: dict) -> dict:
         "confidence": result.get("confidence", 0.0),
         "label": result.get("label"),
         "area_ratio": result.get("area_ratio", 0.0),
-        "danger_level": result.get("danger_level", "SAFE"),
+        "danger_level": result.get("danger_level", "UNKNOWN"),
         "danger_score": result.get("danger_score", 0.0),
         "is_flicker_verified": result.get("is_flicker_verified"),
         "growth_ratio": result.get("growth_ratio"),
@@ -50,16 +52,17 @@ def _result_kwargs(result: dict) -> dict:
 @router.post("/analyze", response_model=FireDetectionResult)
 async def analyze(
     request: FireDetectionRequest,
+    authorization: str = Depends(require_operator),
     agent: FireDetectionAgent = Depends(get_fire_detection_agent),
     backend_client: FaindBackendClient = Depends(get_backend_client),
 ):
-    result = await agent.run(
-        {
-            "image_base64": request.image_base64,
-            "image_url": request.image_url,
-            "device_id": str(request.device_id),
-        }
-    )
+    if request.image_url:
+        # Ignore the client target; capture only this registered camera's approved URL.
+        url = await camera_url(request.device_id, authorization)
+        frame = await capture_frame(url)
+        result = await agent._run_detection({"frames": [] if frame is None else [frame], "device_id": str(request.device_id)})
+    else:
+        result = await agent.run({"image_base64": request.image_base64, "device_id": str(request.device_id)})
     kwargs = _result_kwargs(result)
     detected = kwargs["detected"]
     confidence = kwargs["confidence"]
