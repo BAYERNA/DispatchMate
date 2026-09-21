@@ -14,6 +14,7 @@ from app.agents.fire_detection_agent import FireDetectionAgent
 from app.api.v1.main import api_router
 from app.core.backend_client import BackendClientError, FaindBackendClient
 from app.core.config import get_settings
+from app.core.tracing import setup_tracing
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+setup_tracing(app)
 app.include_router(api_router)
 
 _scheduler = AsyncIOScheduler()
