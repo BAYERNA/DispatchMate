@@ -1,3 +1,5 @@
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 import httpx
@@ -5,11 +7,14 @@ import numpy as np
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
-from app.core import camera_access
-from app.api.v1 import stream_router
-from app.agents.fire_detection_agent import FireDetectionAgent
-from app.services.yolo_service import YoloService
-from app.services import safe_camera
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from app.core import camera_access  # noqa: E402
+from app.api.v1 import stream_router  # noqa: E402
+from app.agents.fire_detection_agent import FireDetectionAgent  # noqa: E402
+from app.services.yolo_service import YoloService  # noqa: E402
+from app.services import safe_camera  # noqa: E402
 
 CAMERA = '00000000-0000-4000-8000-000000000001'
 
