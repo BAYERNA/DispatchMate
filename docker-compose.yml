@@ -10,7 +10,9 @@
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector 확장이 미리 설치된 공식 이미지 — vanilla postgres:16-alpine에는 없다.
+    # postgres:16과 완전히 호환되는 드롭인 대체(FR-08 SOP 벡터 검색용).
+    image: pgvector/pgvector:pg16
     container_name: faind-postgres
     environment:
       POSTGRES_DB: faind

@@ -88,3 +88,20 @@ class FaindBackendClient:
             except httpx.HTTPError as e:
                 logger.error("FR-26 드론 정찰 콜백 실패 (dispatch=%s): %s", dispatch_id, e)
                 raise BackendClientError(str(e)) from e
+
+    async def search_sop(self, content: str) -> list[dict]:
+        """FR-08: 사후보고서 원문으로 SOP 문서 벡터 유사도 검색을 요청한다. backend가 pgvector로
+        전체 SOP 문서를 유사도 순으로 정렬해 반환하며, 일치 여부 판단(임계값 적용)은 호출자
+        (SopMatchAgent) 몫이다."""
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            try:
+                response = await client.post(
+                    f"{self._base_url}/api/v1/sop/search",
+                    json={"content": content},
+                    headers=self._headers(),
+                )
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPError as e:
+                logger.warning("FR-08 SOP 벡터 검색 실패, 키워드 매칭으로 대체: %s", e)
+                raise BackendClientError(str(e)) from e

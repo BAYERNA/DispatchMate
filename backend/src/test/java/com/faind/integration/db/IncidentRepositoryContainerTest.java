@@ -16,6 +16,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
 // Mockito 단위테스트는 레포지토리를 항상 mock으로 대체하기 때문에, 엔티티 매핑이 실제 Flyway
 // 마이그레이션 결과와 어긋나도(컬럼 길이·타입·제약조건 불일치) 잡히지 않는다. 이 테스트는 진짜
@@ -28,7 +29,8 @@ class IncidentRepositoryContainerTest {
 
   @Container
   static final PostgreSQLContainer<?> POSTGRES =
-      new PostgreSQLContainer<>("postgres:16-alpine").withDatabaseName("faind").withUsername("faind").withPassword("faind");
+      new PostgreSQLContainer<>(DockerImageName.parse("pgvector/pgvector:pg16").asCompatibleSubstituteFor("postgres"))
+          .withDatabaseName("faind").withUsername("faind").withPassword("faind");
 
   @DynamicPropertySource
   static void datasourceProperties(DynamicPropertyRegistry registry) {
