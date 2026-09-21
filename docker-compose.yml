@@ -126,6 +126,8 @@ services:
     build:
       context: .
       dockerfile: admin-web/Dockerfile
+      args:
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
     # package-lock.json이 x64 환경에서 생성돼 rolldown(vite)의 arm64-musl 네이티브 바인딩이
     # lockfile에 없다 — Apple Silicon(arm64) 호스트에서 npm ci가 그 바이너리를 못 찾아 빌드가
     # 깨지므로, x64-musl 바이너리는 lockfile에 있는 이 서비스를 amd64로 고정한다.
@@ -143,6 +145,8 @@ services:
     build:
       context: .
       dockerfile: commander-tablet/Dockerfile
+      args:
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
     platform: linux/amd64
     container_name: faind-commander-tablet
     depends_on:
@@ -159,6 +163,7 @@ services:
       dockerfile: responder-app/Dockerfile
       args:
         VITE_WEB_PUSH_PUBLIC_KEY: ${VITE_WEB_PUSH_PUBLIC_KEY:-}
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
     platform: linux/amd64
     container_name: faind-responder-app
     depends_on:
