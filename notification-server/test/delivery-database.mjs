@@ -126,7 +126,15 @@ try {
   await rows(`INSERT INTO ai_judgment_logs(judgment_id,judgment_type,related_incident_id,summary) VALUES($1,'CCTV_DETECTION',$2,'연기 감지')`,[judgment,incident]);
   await operations.feedback(judgment,commanderUser,'FALSE_POSITIVE','수증기');
   await operations.feedback(judgment,commanderUser,'CORRECT','현장 확인');
-  const stats=(await operations.feedbackStats(commanderUser))[0];assert.equal(stats.reviewedCount,1);assert.equal(stats.falsePositiveCount,0);checks++;
+  const judgment2=uuid(71),judgment3=uuid(72);
+  await rows(`INSERT INTO ai_judgment_logs(judgment_id,judgment_type,related_incident_id,summary) VALUES($1,'CCTV_DETECTION',$2,'감지 실패'),($3,'CCTV_DETECTION',$2,'오탐지')`,[judgment2,incident,judgment3]);
+  await operations.feedback(judgment2,commanderUser,'FALSE_NEGATIVE','현장에서 놓친 발화점');
+  await operations.feedback(judgment3,commanderUser,'FALSE_POSITIVE','촬영 반사광');
+  // correct=1, falsePositive=1, falseNegative=1 → precision=recall=f1=50%(반올림)
+  const stats=(await operations.feedbackStats(commanderUser))[0];
+  assert.equal(stats.reviewedCount,3);assert.equal(stats.correctCount,1);
+  assert.equal(stats.falsePositiveCount,1);assert.equal(stats.falseNegativeCount,1);
+  assert.equal(stats.precisionPercent,50);assert.equal(stats.recallPercent,50);assert.equal(stats.f1ScorePercent,50);checks++;
   const timeline=await operations.timeline(incident,commanderUser);assert.ok(timeline.some(event=>event.eventType==='ALERT_ACKNOWLEDGED'));assert.ok(timeline.some(event=>event.eventType==='AI_JUDGMENT'));checks++;
   await assert.rejects(async()=>operations.timeline(incident,{userId:a,badgeNumber:'0011',role:'RESPONDER'}));checks++;
   const alertsCreated=[];

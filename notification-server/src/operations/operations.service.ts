@@ -60,9 +60,23 @@ export class OperationsService {
       RETURNING judgment_id AS "judgmentId",verdict,note,reviewed_by AS "reviewedBy",reviewed_at AS "reviewedAt"`,
       [judgmentId,verdict,note?.trim()||null,user.userId]); if(!rows.length) throw new NotFoundException(); return rows[0];
   }
+  // 정확도(correctPercent)는 이미 있었지만, "오탐 중 몇 %가 진짜 정탐이었나(precision)"·
+  // "실제 맞아야 할 것 중 몇 %를 잡았나(recall)"는 따로 계산돼 있지 않았다 — CORRECT를 진양성,
+  // FALSE_POSITIVE/FALSE_NEGATIVE를 그대로 위양성/위음성으로 봐서 표준 정의대로 계산한다.
+  // UNSURE는 분모에서 제외(판단 보류 표본은 정밀도·재현율 어느 쪽으로도 셀 수 없음).
   feedbackStats(user:AuthenticatedUser) { this.operator(user); return this.db.query(`SELECT count(*)::int AS "reviewedCount",
+    count(*) FILTER(WHERE verdict='CORRECT')::int AS "correctCount",
     count(*) FILTER(WHERE verdict='FALSE_POSITIVE')::int AS "falsePositiveCount",
     count(*) FILTER(WHERE verdict='FALSE_NEGATIVE')::int AS "falseNegativeCount",
-    CASE WHEN count(*)=0 THEN NULL ELSE round(100.0*count(*) FILTER(WHERE verdict='CORRECT')/count(*),1) END AS "correctPercent"
-    FROM ai_judgment_feedback`); }
+    (CASE WHEN count(*)=0 THEN NULL ELSE round(100.0*count(*) FILTER(WHERE verdict='CORRECT')/count(*),1) END)::float8 AS "correctPercent",
+    (CASE WHEN count(*) FILTER(WHERE verdict IN ('CORRECT','FALSE_POSITIVE'))=0 THEN NULL
+      ELSE round(100.0*count(*) FILTER(WHERE verdict='CORRECT')/count(*) FILTER(WHERE verdict IN ('CORRECT','FALSE_POSITIVE')),1) END)::float8 AS "precisionPercent",
+    (CASE WHEN count(*) FILTER(WHERE verdict IN ('CORRECT','FALSE_NEGATIVE'))=0 THEN NULL
+      ELSE round(100.0*count(*) FILTER(WHERE verdict='CORRECT')/count(*) FILTER(WHERE verdict IN ('CORRECT','FALSE_NEGATIVE')),1) END)::float8 AS "recallPercent"
+    FROM ai_judgment_feedback`).then((rows:any[])=>{
+      const r=rows[0];
+      const precision=r.precisionPercent, recall=r.recallPercent;
+      r.f1ScorePercent=(precision==null||recall==null||precision+recall===0)?null:Math.round(2*precision*recall/(precision+recall)*10)/10;
+      return [r];
+    }); }
 }
