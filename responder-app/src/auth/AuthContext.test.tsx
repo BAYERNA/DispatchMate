@@ -86,4 +86,31 @@ describe('AuthContext', () => {
   it('AuthProvider 밖에서 useAuth를 쓰면 에러를 던진다', () => {
     expect(() => renderHook(() => useAuth())).toThrow('useAuth는 AuthProvider 내부에서만 사용할 수 있습니다.')
   })
+
+  it('로그인 응답의 role이 3종을 벗어나면 인증 상태로 만들지 않고 던진다', async () => {
+    vi.mocked(authApi.login).mockResolvedValue({
+      accessToken: 'issued-token',
+      userId: 'user-1',
+      name: '홍길동',
+      // @ts-expect-error 잘못된 백엔드 응답을 흉내낸다
+      role: 'SUPERUSER',
+      initialPassword: false,
+    })
+    const { result } = renderAuth()
+
+    await expect(act(async () => result.current.login('B0001', 'pw'))).rejects.toThrow()
+
+    expect(result.current.isAuthenticated).toBe(false)
+    expect(getStoredToken()).toBeNull()
+  })
+
+  it('localStorage에 저장된 사용자 정보가 스키마에 맞지 않으면 로그아웃 상태로 시작한다', () => {
+    localStorage.setItem('faind.accessToken', 'stale-token')
+    localStorage.setItem('faind.user', JSON.stringify({ userId: 'user-1', name: '홍길동', role: 'SUPERUSER', initialPassword: false }))
+
+    const { result } = renderAuth()
+
+    expect(result.current.isAuthenticated).toBe(false)
+    expect(result.current.user).toBeNull()
+  })
 })

@@ -1,14 +1,9 @@
 import { createContext, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { getStoredToken, setStoredToken } from '../api/client'
 import * as authApi from '../api/auth'
-import type { Role } from '../types'
+import { authUserSchema, loginResponseSchema } from './schema'
 
-interface AuthUser {
-  userId: string
-  name: string
-  role: Role
-  initialPassword: boolean
-}
+type AuthUser = ReturnType<typeof authUserSchema.parse>
 
 interface AuthContextValue {
   user: AuthUser | null
@@ -26,8 +21,10 @@ function loadStoredUser(): AuthUser | null {
   const raw = localStorage.getItem(USER_STORAGE_KEY)
   if (!raw) return null
   try {
-    return JSON.parse(raw) as AuthUser
+    return authUserSchema.parse(JSON.parse(raw))
   } catch {
+    // 파싱 실패뿐 아니라 스키마가 바뀐 구버전 저장값도 여기서 걸러진다 — 잘못된 role을
+    // 신뢰하고 쓰는 것보다 로그아웃 상태로 시작하는 편이 안전하다.
     return null
   }
 }
@@ -44,7 +41,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(() => (getStoredToken() ? loadStoredUser() : null))
 
   const login = useCallback(async (badgeNumber: string, password: string) => {
-    const response = await authApi.login(badgeNumber, password)
+    // 응답 형태를 타입 단언이 아니라 실제로 검증한다 — role이 예상 3종을 벗어나면 여기서
+    // 던져서(로그인 실패로 처리) 잘못된 권한으로 화면이 뜨는 걸 막는다.
+    const response = loginResponseSchema.parse(await authApi.login(badgeNumber, password))
     setStoredToken(response.accessToken)
     const nextUser: AuthUser = {
       userId: response.userId,
