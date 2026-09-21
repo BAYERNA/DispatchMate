@@ -262,6 +262,8 @@ jobs:
   docker-smoke-test:
     name: Docker Compose 스모크 테스트
     env:
+      POSTGRES_PASSWORD: ci-only-postgres-password-not-for-production
+      JWT_SECRET: ci-only-jwt-secret-not-for-production
       INTERNAL_WEBHOOK_TOKEN: ci-only-webhook-token-not-for-production
       INTERNAL_SERVICE_TOKEN: ci-only-callback-token-not-for-production
     runs-on: ubuntu-latest
