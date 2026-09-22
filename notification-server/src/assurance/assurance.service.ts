@@ -16,11 +16,15 @@ export class AssuranceService {
   ) {}
   private admin(user: AuthenticatedUser) { if (user.role !== 'ADMIN') throw new ForbiddenException(); }
 
+  // 네 범주 모두 incidents로 가는 FK가 있으므로(대상 테이블 자체에는 organization_id가
+  // 없다) incidents.organization_id로 조인해서 스코프한다 — audit_log의 incident_id는
+  // nullable이라, INNER JOIN이 자연히 어느 조직 것인지 알 수 없는 플랫폼 레벨 감사
+  // 이벤트(예: incident와 무관한 관리 행위)를 조직 관리자의 보존 정책 대상에서 제외한다.
   private candidateQuery(category: string) {
-    if (category === 'radio_transcript') return { count: `SELECT COUNT(*)::int AS count FROM radio_transcripts WHERE created_at<$1`, sample: `SELECT transcript_id::text AS ref FROM radio_transcripts WHERE created_at<$1 ORDER BY created_at LIMIT 20` };
-    if (category === 'location_history') return { count: `SELECT COUNT(*)::int AS count FROM indoor_position_updates WHERE recorded_at<$1`, sample: `SELECT position_id::text AS ref FROM indoor_position_updates WHERE recorded_at<$1 ORDER BY recorded_at LIMIT 20` };
-    if (category === 'evidence') return { count: `SELECT COUNT(*)::int AS count FROM evidence_assets WHERE collected_at<$1 AND NOT legal_hold`, sample: `SELECT evidence_id::text AS ref FROM evidence_assets WHERE collected_at<$1 AND NOT legal_hold ORDER BY collected_at LIMIT 20`, protected: `SELECT COUNT(*)::int AS count FROM evidence_assets WHERE collected_at<$1 AND legal_hold` };
-    if (category === 'audit_log') return { count: `SELECT COUNT(*)::int AS count FROM immutable_audit_events WHERE occurred_at<$1`, sample: `SELECT audit_id::text AS ref FROM immutable_audit_events WHERE occurred_at<$1 ORDER BY sequence_no LIMIT 20` };
+    if (category === 'radio_transcript') return { count: `SELECT COUNT(*)::int AS count FROM radio_transcripts rt JOIN incidents i ON i.incident_id=rt.incident_id WHERE rt.created_at<$1 AND i.organization_id=$2`, sample: `SELECT rt.transcript_id::text AS ref FROM radio_transcripts rt JOIN incidents i ON i.incident_id=rt.incident_id WHERE rt.created_at<$1 AND i.organization_id=$2 ORDER BY rt.created_at LIMIT 20` };
+    if (category === 'location_history') return { count: `SELECT COUNT(*)::int AS count FROM indoor_position_updates p JOIN incidents i ON i.incident_id=p.incident_id WHERE p.recorded_at<$1 AND i.organization_id=$2`, sample: `SELECT p.position_id::text AS ref FROM indoor_position_updates p JOIN incidents i ON i.incident_id=p.incident_id WHERE p.recorded_at<$1 AND i.organization_id=$2 ORDER BY p.recorded_at LIMIT 20` };
+    if (category === 'evidence') return { count: `SELECT COUNT(*)::int AS count FROM evidence_assets e JOIN incidents i ON i.incident_id=e.incident_id WHERE e.collected_at<$1 AND NOT e.legal_hold AND i.organization_id=$2`, sample: `SELECT e.evidence_id::text AS ref FROM evidence_assets e JOIN incidents i ON i.incident_id=e.incident_id WHERE e.collected_at<$1 AND NOT e.legal_hold AND i.organization_id=$2 ORDER BY e.collected_at LIMIT 20`, protected: `SELECT COUNT(*)::int AS count FROM evidence_assets e JOIN incidents i ON i.incident_id=e.incident_id WHERE e.collected_at<$1 AND e.legal_hold AND i.organization_id=$2` };
+    if (category === 'audit_log') return { count: `SELECT COUNT(*)::int AS count FROM immutable_audit_events a JOIN incidents i ON i.incident_id=a.incident_id WHERE a.occurred_at<$1 AND i.organization_id=$2`, sample: `SELECT a.audit_id::text AS ref FROM immutable_audit_events a JOIN incidents i ON i.incident_id=a.incident_id WHERE a.occurred_at<$1 AND i.organization_id=$2 ORDER BY a.sequence_no LIMIT 20` };
     throw new BadRequestException('실행 어댑터가 없는 데이터 범주입니다.');
   }
 
@@ -30,15 +34,15 @@ export class AssuranceService {
     if (!policy?.enabled || policy.legal_hold) throw new BadRequestException('비활성 또는 법적 보존 정책은 실행할 수 없습니다.');
     const cutoff = new Date(Date.now() - Number(policy.retention_days) * 86400000).toISOString();
     const query = this.candidateQuery(policy.data_category);
-    const count = Number((await this.db.query(query.count, [cutoff]))[0].count);
-    const protectedCount = query.protected ? Number((await this.db.query(query.protected, [cutoff]))[0].count) : 0;
-    const refs = (await this.db.query(query.sample, [cutoff])).map((row: any) => row.ref);
-    return (await this.db.query(`INSERT INTO retention_execution_plans(policy_id,cutoff_at,candidate_count,protected_count,sample_refs,created_by) VALUES($1,$2,$3,$4,$5::jsonb,$6) RETURNING execution_id AS "executionId",status,candidate_count AS "candidateCount",protected_count AS "protectedCount",sample_refs AS "sampleRefs",cutoff_at AS "cutoffAt"`, [policyId, cutoff, count, protectedCount, JSON.stringify(refs), user.userId]))[0];
+    const count = Number((await this.db.query(query.count, [cutoff, user.organizationId]))[0].count);
+    const protectedCount = query.protected ? Number((await this.db.query(query.protected, [cutoff, user.organizationId]))[0].count) : 0;
+    const refs = (await this.db.query(query.sample, [cutoff, user.organizationId])).map((row: any) => row.ref);
+    return (await this.db.query(`INSERT INTO retention_execution_plans(policy_id,organization_id,cutoff_at,candidate_count,protected_count,sample_refs,created_by) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7) RETURNING execution_id AS "executionId",status,candidate_count AS "candidateCount",protected_count AS "protectedCount",sample_refs AS "sampleRefs",cutoff_at AS "cutoffAt"`, [policyId, user.organizationId, cutoff, count, protectedCount, JSON.stringify(refs), user.userId]))[0];
   }
 
   async approveRetention(executionId: string, user: AuthenticatedUser) {
     this.admin(user);
-    const rows = await this.db.query(`UPDATE retention_execution_plans SET status='APPROVED',approved_by=$2,approved_at=now() WHERE execution_id=$1 AND status='PREVIEW' AND created_by<>$2 RETURNING execution_id AS "executionId",status`, [executionId, user.userId]);
+    const rows = await this.db.query(`UPDATE retention_execution_plans SET status='APPROVED',approved_by=$2,approved_at=now() WHERE execution_id=$1 AND organization_id=$3 AND status='PREVIEW' AND created_by<>$2 RETURNING execution_id AS "executionId",status`, [executionId, user.userId, user.organizationId]);
     if (!rows.length) throw new BadRequestException('작성자와 다른 관리자의 승인이 필요합니다.');
     return rows[0];
   }
@@ -46,12 +50,15 @@ export class AssuranceService {
   async executeRetention(executionId: string, user: AuthenticatedUser) {
     this.admin(user);
     return this.db.manager.transaction(async manager => {
-      const plan = (await manager.query(`SELECT e.*,p.data_category,p.action FROM retention_execution_plans e JOIN data_retention_policies p ON p.policy_id=e.policy_id WHERE e.execution_id=$1 FOR UPDATE`, [executionId]))[0];
+      const plan = (await manager.query(`SELECT e.*,p.data_category,p.action FROM retention_execution_plans e JOIN data_retention_policies p ON p.policy_id=e.policy_id WHERE e.execution_id=$1 AND e.organization_id=$2 FOR UPDATE`, [executionId, user.organizationId]))[0];
       if (!plan || plan.status !== 'APPROVED') throw new BadRequestException('승인된 실행 계획이 아닙니다.');
       await manager.query(`UPDATE retention_execution_plans SET status='RUNNING' WHERE execution_id=$1`, [executionId]);
       let result;
-      if (plan.data_category === 'radio_transcript' && plan.action === 'ANONYMIZE') result = await manager.query(`UPDATE radio_transcripts SET speaker_label=NULL,transcript='[보존정책에 따라 익명화됨]',audio_uri=NULL WHERE created_at<$1 RETURNING transcript_id`, [plan.cutoff_at]);
-      else if (plan.data_category === 'location_history' && plan.action === 'DELETE') result = await manager.query(`DELETE FROM indoor_position_updates WHERE recorded_at<$1 RETURNING position_id`, [plan.cutoff_at]);
+      // 실제 삭제/익명화 구문도 cutoff뿐 아니라 organization_id로 다시 스코프한다 — 그렇지
+      // 않으면 preview 단계에서만 조직별로 후보를 셌을 뿐, 실행은 여전히 cutoff 이전의
+      // 모든 조직 데이터를 건드리는 채로 남는다.
+      if (plan.data_category === 'radio_transcript' && plan.action === 'ANONYMIZE') result = await manager.query(`UPDATE radio_transcripts rt SET speaker_label=NULL,transcript='[보존정책에 따라 익명화됨]',audio_uri=NULL FROM incidents i WHERE i.incident_id=rt.incident_id AND rt.created_at<$1 AND i.organization_id=$2 RETURNING rt.transcript_id`, [plan.cutoff_at, plan.organization_id]);
+      else if (plan.data_category === 'location_history' && plan.action === 'DELETE') result = await manager.query(`DELETE FROM indoor_position_updates p USING incidents i WHERE i.incident_id=p.incident_id AND p.recorded_at<$1 AND i.organization_id=$2 RETURNING p.position_id`, [plan.cutoff_at, plan.organization_id]);
       else throw new BadRequestException('ARCHIVE 정책은 외부 WORM 아카이브 검증 후에만 완료할 수 있습니다.');
       const rows = await manager.query(`UPDATE retention_execution_plans SET status='SUCCEEDED',executed_count=$2,completed_at=now() WHERE execution_id=$1 RETURNING execution_id AS "executionId",status,executed_count AS "executedCount"`, [executionId, result.length]);
       return rows[0];
@@ -167,7 +174,7 @@ export class AssuranceService {
   async overview(user: AuthenticatedUser) {
     this.admin(user);
     const [retention,policies,circuits,certs,approvals,devices,slo,anomalies,webhooks,offlineAssets] = await Promise.all([
-      this.db.query(`SELECT execution_id AS "executionId",status,candidate_count AS "candidateCount",executed_count AS "executedCount",created_at AS "createdAt" FROM retention_execution_plans ORDER BY created_at DESC LIMIT 10`),
+      this.db.query(`SELECT execution_id AS "executionId",status,candidate_count AS "candidateCount",executed_count AS "executedCount",created_at AS "createdAt" FROM retention_execution_plans WHERE organization_id=$1 ORDER BY created_at DESC LIMIT 10`, [user.organizationId]),
       this.db.query(`SELECT policy_id AS "policyId",data_category AS "dataCategory",retention_days AS "retentionDays",action,legal_hold AS "legalHold",enabled FROM data_retention_policies ORDER BY data_category`),
       this.db.query(`SELECT provider_key AS "providerKey",state,consecutive_failures AS "consecutiveFailures",last_error AS "lastError",updated_at AS "updatedAt" FROM provider_circuit_breakers ORDER BY provider_key`),
       this.db.query(`SELECT service_name AS "serviceName",not_after AS "notAfter",source FROM certificate_inventory ORDER BY not_after`),

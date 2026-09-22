@@ -120,6 +120,58 @@ class OrganizationMigrationContainerTest {
     assertThat(count).isEqualTo(1);
   }
 
+  // V21: assurance 데이터 보존(retention) 실행계획도 조직별로 나뉜다 — organization_id
+  // 없이는 저장 자체가 안 돼야 한다(이게 없으면 notification-server의 execute 단계가
+  // cutoff만으로 모든 조직 데이터를 지우는 구멍으로 되돌아간다).
+  @Test
+  void retention_execution_plans는_organization_id_없이_저장할_수_없다() {
+    UUID org = insertOrganization("ORG-H", "테스트조직H");
+    UUID admin = insertAdminUser(org, "ADMIN-H");
+    UUID policyId = radioTranscriptPolicyId();
+
+    assertThatThrownBy(() -> jdbcTemplate.update(
+            "INSERT INTO retention_execution_plans(policy_id, cutoff_at, created_by) VALUES (?, now(), ?)",
+            policyId, admin))
+        .hasMessageContaining("organization_id");
+  }
+
+  @Test
+  void retention_execution_plans는_조직별로_섞이지_않고_저장된다() {
+    UUID orgA = insertOrganization("ORG-I", "테스트조직I");
+    UUID orgB = insertOrganization("ORG-J", "테스트조직J");
+    UUID adminA = insertAdminUser(orgA, "ADMIN-I");
+    UUID adminB = insertAdminUser(orgB, "ADMIN-J");
+    UUID policyId = radioTranscriptPolicyId();
+
+    insertRetentionExecutionPlan(policyId, orgA, adminA);
+    insertRetentionExecutionPlan(policyId, orgB, adminB);
+
+    Integer countForOrgA = jdbcTemplate.queryForObject(
+        "SELECT count(*) FROM retention_execution_plans WHERE organization_id = ?", Integer.class, orgA);
+    assertThat(countForOrgA).isEqualTo(1);
+  }
+
+  private UUID radioTranscriptPolicyId() {
+    return jdbcTemplate.queryForObject(
+        "SELECT policy_id FROM data_retention_policies WHERE data_category = 'radio_transcript'", UUID.class);
+  }
+
+  private void insertRetentionExecutionPlan(UUID policyId, UUID organizationId, UUID createdBy) {
+    jdbcTemplate.update(
+        "INSERT INTO retention_execution_plans(policy_id, organization_id, cutoff_at, created_by) "
+            + "VALUES (?, ?, now(), ?)",
+        policyId, organizationId, createdBy);
+  }
+
+  private UUID insertAdminUser(UUID organizationId, String badgeNumber) {
+    UUID id = UUID.randomUUID();
+    jdbcTemplate.update(
+        "INSERT INTO users(user_id, organization_id, name, role, badge_number, password_hash) "
+            + "VALUES (?, ?, '관리자', 'ADMIN', ?, 'hash')",
+        id, organizationId, badgeNumber);
+    return id;
+  }
+
   private void insertFederationAgency(UUID organizationId, String agencyCode, String name) {
     jdbcTemplate.update(
         "INSERT INTO federation_agencies(organization_id, agency_code, name) VALUES (?, ?, ?)",
