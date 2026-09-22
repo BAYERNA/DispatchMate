@@ -157,7 +157,8 @@ jobs:
     # (3개 job으로 쪼개면 backend를 세 번 띄우게 되어 낭비다).
     services:
       postgres:
-        image: postgres:16-alpine
+        # pgvector 확장 포함 이미지(FR-08 SOP 벡터 검색) — docker-compose.yml과 동일하게 맞춘다.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_DB: faind
           POSTGRES_USER: faind

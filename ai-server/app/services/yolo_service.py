@@ -90,6 +90,19 @@ class YoloService:
     def is_available(self) -> bool:
         return self._model is not None and bool(self._fire_class_ids)
 
+    def model_info(self) -> dict:
+        return {
+            "model_path": self._model_path,
+            "confidence_threshold": self._confidence_threshold,
+            "device": self._device,
+            "fire_class_ids": sorted(self._fire_class_ids),
+            "is_available": self.is_available,
+            "growth_alert_ratio": GROWTH_ALERT_RATIO,
+            "danger_score_warning": DANGER_SCORE_WARNING,
+            "danger_score_danger": DANGER_SCORE_DANGER,
+            "danger_score_critical": DANGER_SCORE_CRITICAL,
+        }
+
     def _load_model(self) -> None:
         try:
             from ultralytics import YOLO

@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { Sentry } from '../monitoring/sentry'
 
 interface Props {
   children: ReactNode
@@ -10,8 +11,8 @@ interface State {
 
 // 렌더 중 예외가 나면 화면 전체가 백지로 죽던 걸 막는다 — 관리자 콘솔 어딘가 한 화면이
 // 깨져도 로그인·새로고침 정도로 복구할 수 있어야 한다.
-// componentDidCatch는 향후 모니터링(Sentry 등)을 붙일 때 이 한 곳만 바꾸면 되는 지점이다 —
-// 지금은 실제 계정/DSN이 없어 SDK를 새로 추가하지 않고 console.error로 남긴다.
+// captureException은 VITE_SENTRY_DSN이 없으면(monitoring/sentry.ts에서 init을 안 함) 조용히
+// no-op되므로, DSN 미설정 환경(로컬 개발 등)에서도 이 코드는 안전하다.
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false }
 
@@ -21,6 +22,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[ErrorBoundary] 처리되지 않은 렌더링 오류', error, info.componentStack)
+    Sentry.captureException(error, { contexts: { react: { componentStack: info.componentStack } } })
   }
 
   render() {

@@ -4,8 +4,11 @@
 USR-003 "내 보고서 기록 / 실행 여부 / 추천 SOP 근거" 3열 표(NFR-07 "AI 제안 vs 실제 행동 대조")를
 그대로 채울 수 있도록 sop_match_result를 리스트[dict] 구조로 만든다.
 
-SOP_CHECKLIST는 데모용 고정 목록이다 — 실서비스 단계에서는 기관별 SOP 문서를 벡터 검색으로
-대조하는 방식(RAG)으로 교체하되, 이 에이전트의 build_graph()/run() 계약은 그대로 유지된다.
+backend(/api/v1/sop/search)가 pgvector로 SOP 문서 전체를 유사도 순으로 반환하면, 그중 임계값
+이상인 항목만 "일치"로 표시한다(RAG). backend 호출이 실패하면(네트워크 오류, 벡터 미설정 등)
+예전의 키워드 substring 매칭(SOP_CHECKLIST)으로 조용히 대체한다 — NFR-07 "AI 보조는 없어도
+핵심 계약(입력→응답)은 항상 지켜야 한다" 원칙을 그대로 따른다. build_graph()/run() 계약은
+이 교체 전후로 동일하다.
 """
 
 import logging
@@ -16,9 +19,11 @@ from langchain_core.messages import HumanMessage
 from langgraph.graph import END, StateGraph
 
 from app.agents.base_agent import BaseAgent
+from app.core.backend_client import BackendClientError, FaindBackendClient
 
 logger = logging.getLogger(__name__)
 
+# 벡터 검색 실패 시에만 쓰는 폴백. SopEmbeddingService가 계산하는 벡터와 동일한 5개 항목이다.
 SOP_CHECKLIST = [
     {"item": "화재 인지 → 무전 보고", "reference": "§4.2 무전 보고 원칙", "keywords": ["무전", "보고"]},
     {"item": "구역별 인명 검색", "reference": "§8.7 구역별 인명 검색 절차", "keywords": ["인명", "검색", "구조"]},
@@ -27,10 +32,15 @@ SOP_CHECKLIST = [
     {"item": "잔화 확인 및 철수", "reference": "§9.2 잔화 확인 절차", "keywords": ["잔화", "진화", "철수"]},
 ]
 
+# backend의 SopEmbeddingService(문자 2-gram 해싱)로 실측한 값 — 실제로 관련 있는 문장은
+# 0.53~0.56, 무관한 문장은 0.15~0.20의 코사인 유사도를 보였다. 그 사이인 0.30을 경계로 쓴다.
+SIMILARITY_MATCH_THRESHOLD = 0.30
+
 
 class SopMatchAgent(BaseAgent):
-    def __init__(self, llm: Optional[BaseChatModel] = None):
+    def __init__(self, llm: Optional[BaseChatModel] = None, backend_client: Optional[FaindBackendClient] = None):
         self.llm = llm
+        self.backend_client = backend_client or FaindBackendClient()
         self.graph = self.build_graph()
 
     def build_graph(self):
@@ -46,19 +56,32 @@ class SopMatchAgent(BaseAgent):
         return await self.graph.ainvoke(state)
 
     async def _match_against_checklist(self, state: dict) -> dict:
-        content = (state.get("report_content") or "").lower()
-        items = []
-        for sop in SOP_CHECKLIST:
-            executed = any(keyword.lower() in content for keyword in sop["keywords"])
-            items.append(
+        content = state.get("report_content") or ""
+        try:
+            results = await self.backend_client.search_sop(content)
+            items = [
                 {
-                    "reportRecord": sop["item"],
-                    "executed": "일치" if executed else "미실행",
-                    "recommendedSop": sop["reference"],
+                    "reportRecord": result["item"],
+                    "executed": "일치" if result["similarity"] >= SIMILARITY_MATCH_THRESHOLD else "미실행",
+                    "recommendedSop": result["reference"],
                 }
-            )
+                for result in results
+            ]
+        except BackendClientError:
+            items = self._match_against_checklist_heuristic(content)
         state["sop_match_items"] = items
         return state
+
+    def _match_against_checklist_heuristic(self, content: str) -> list[dict]:
+        content_lower = content.lower()
+        return [
+            {
+                "reportRecord": sop["item"],
+                "executed": "일치" if any(keyword.lower() in content_lower for keyword in sop["keywords"]) else "미실행",
+                "recommendedSop": sop["reference"],
+            }
+            for sop in SOP_CHECKLIST
+        ]
 
     async def _generate_summary(self, state: dict) -> dict:
         items = state["sop_match_items"]

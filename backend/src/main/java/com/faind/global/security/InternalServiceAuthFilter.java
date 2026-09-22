@@ -11,10 +11,11 @@ import org.springframework.util.AntPathMatcher;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-// ai-server → backend 콜백(FR-24 CCTV 감지, FR-26 드론 정찰 결과) + Prometheus의 /actuator/prometheus
-// 스크레이핑 전용 — 로그인 사용자 JWT가 아니라 내부 서비스끼리만 공유하는 토큰으로 검증한다.
-// notification-server의 InternalWebhookGuard와 동일한 설계: faind.security.internal-service-token을
-// 설정하지 않으면 503으로 거부한다(fail-closed, NFR-002/NFR-008).
+// ai-server → backend 콜백(FR-24 CCTV 감지, FR-26 드론 정찰 결과, FR-08 SOP 벡터 검색)
+// + Prometheus의 /actuator/prometheus 스크레이핑 전용 — 로그인 사용자 JWT가 아니라 내부
+// 서비스끼리만 공유하는 토큰으로 검증한다. notification-server의 InternalWebhookGuard와
+// 동일한 설계: faind.security.internal-service-token을 설정하지 않으면 503으로 거부한다
+// (fail-closed, NFR-002/NFR-008).
 @Component
 public class InternalServiceAuthFilter extends OncePerRequestFilter {
 
@@ -23,6 +24,7 @@ public class InternalServiceAuthFilter extends OncePerRequestFilter {
   private static final String[] INTERNAL_PATHS = {
     "/api/v1/incidents/dispatch/cctv-detections",
     "/api/v1/incidents/drone-dispatches/*/recon-result",
+    "/api/v1/sop/search",
     "/actuator/prometheus"
   };
 
