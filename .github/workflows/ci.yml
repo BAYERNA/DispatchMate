@@ -295,7 +295,7 @@ jobs:
             port=${PORTS[$name]}
             code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:$port/api/v1/auth/login" \
               -H "Content-Type: application/json" -H "Origin: http://localhost:$port" \
-              -d '{"badgeNumber":"E2E-ADMIN","password":"Test1234!"}')
+              -d '{"organizationCode":"DEFAULT","badgeNumber":"E2E-ADMIN","password":"Test1234!"}')
             echo "$name (:$port) 로그인 → HTTP $code"
             if [ "$code" != "200" ]; then
               echo "실패 — nginx 프록시/CORS 설정을 확인하라"
