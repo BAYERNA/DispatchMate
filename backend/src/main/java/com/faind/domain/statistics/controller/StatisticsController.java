@@ -2,6 +2,8 @@ package com.faind.domain.statistics.controller;
 
 import com.faind.domain.statistics.dto.StatisticsSummaryResponse;
 import com.faind.domain.statistics.service.StatisticsService;
+import com.faind.global.security.AuthenticatedUser;
+import com.faind.global.security.CurrentUser;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,7 +23,7 @@ public class StatisticsController {
   }
 
   @GetMapping("/summary")
-  public ResponseEntity<StatisticsSummaryResponse> summary() {
-    return ResponseEntity.ok(statisticsService.getSummary());
+  public ResponseEntity<StatisticsSummaryResponse> summary(@CurrentUser AuthenticatedUser currentUser) {
+    return ResponseEntity.ok(statisticsService.getSummary(currentUser.organizationId()));
   }
 }

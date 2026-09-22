@@ -106,7 +106,9 @@ public class DroneDispatchService {
   }
 
   // FR-27: ADM-009 골든타임 단축효과 — "드론 활용 시 현장 최초 도착" 평균값의 소스.
-  public OptionalDouble averageDroneArrivalSeconds() {
+  // drone_dispatches는 organization_id가 없다 — incident_id를 통해 매번 조회한 incident의
+  // organizationId로 걸러낸다(호출자 조직 외 출동은 애초에 평균에 넣지 않는다).
+  public OptionalDouble averageDroneArrivalSeconds(UUID organizationId) {
     List<DroneDispatch> arrived = droneDispatchRepository.findAll().stream()
         .filter(d -> d.getArrivedAt() != null)
         .toList();
@@ -116,7 +118,7 @@ public class DroneDispatchService {
     return arrived.stream()
         .mapToLong(d -> {
           Incident incident = incidentRepository.findById(d.getIncidentId()).orElse(null);
-          if (incident == null) {
+          if (incident == null || !incident.getOrganizationId().equals(organizationId)) {
             return -1;
           }
           return Duration.between(incident.getReportedAt(), d.getArrivedAt()).getSeconds();
