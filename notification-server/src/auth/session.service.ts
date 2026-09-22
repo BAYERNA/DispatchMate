@@ -8,7 +8,7 @@ export class SessionService {
   constructor(private readonly config: ConfigService) {}
 
   async verify(token: string): Promise<AuthenticatedUser> {
-    let user: AuthenticatedUser;
+    let user: Omit<AuthenticatedUser, 'organizationId'>;
     try { user = verifyFaindJwt(token, this.config.getOrThrow<string>('JWT_SECRET')); }
     catch { throw new UnauthorizedException('유효하지 않은 토큰입니다.'); }
     const base = this.config.get<string>('BACKEND_BASE_URL', 'http://localhost:8080');
@@ -20,7 +20,11 @@ export class SessionService {
     } catch { throw new ServiceUnavailableException('계정 상태를 확인할 수 없습니다.'); }
     if (!response.ok) throw new UnauthorizedException('세션이 만료되었거나 폐기되었습니다.');
     const current = await response.json() as AuthenticatedUser;
-    if (current.userId !== user.userId || current.role !== user.role) throw new UnauthorizedException();
-    return user;
+    if (current.userId !== user.userId || current.role !== user.role || !current.organizationId) {
+      throw new UnauthorizedException();
+    }
+    // organizationId는 JWT가 아니라 backend가 지금 막 다시 읽은 값을 신뢰 근거로 쓴다(위조 불가,
+    // 즉시 반영) — user(JWT 디코딩 결과)에 그대로 병합한다.
+    return { ...user, organizationId: current.organizationId };
   }
 }

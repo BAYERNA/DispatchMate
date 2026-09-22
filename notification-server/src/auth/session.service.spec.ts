@@ -7,9 +7,13 @@ describe('SessionService', () => {
   beforeEach(() => { service = new SessionService({getOrThrow:()=>secret,get:()=> 'http://backend:8080'} as any); });
   afterEach(() => jest.restoreAllMocks());
   it('checks current backend state after signature verification', async () => {
-    const fetch = jest.spyOn(global,'fetch').mockResolvedValue({ok:true,json:async()=>({userId:'u',role:'RESPONDER'})} as Response);
-    await expect(service.verify(token())).resolves.toMatchObject({userId:'u'});
+    const fetch = jest.spyOn(global,'fetch').mockResolvedValue({ok:true,json:async()=>({userId:'u',role:'RESPONDER',organizationId:'org-1'})} as Response);
+    await expect(service.verify(token())).resolves.toMatchObject({userId:'u',organizationId:'org-1'});
     expect(fetch).toHaveBeenCalledWith('http://backend:8080/api/v1/auth/session',expect.objectContaining({headers:{Authorization:expect.stringMatching(/^Bearer /)}}));
+  });
+  it('rejects when backend session response is missing organizationId', async () => {
+    jest.spyOn(global,'fetch').mockResolvedValue({ok:true,json:async()=>({userId:'u',role:'RESPONDER'})} as Response);
+    await expect(service.verify(token())).rejects.toThrow();
   });
   it('rejects revoked account sessions and fails closed on backend outage', async () => {
     jest.spyOn(global,'fetch').mockResolvedValue({ok:false,status:403} as Response);

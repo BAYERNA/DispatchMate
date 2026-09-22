@@ -8,6 +8,7 @@ import com.faind.domain.incident.entity.IncidentType;
 import com.faind.domain.incident.repository.IncidentRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -41,10 +42,13 @@ class IncidentRepositoryContainerTest {
 
   @org.springframework.beans.factory.annotation.Autowired private IncidentRepository incidentRepository;
 
+  // V17에서 백필되는 마이그레이션 이전 데이터용 DEFAULT 조직 — 실제 마이그레이션 결과에 항상 존재한다.
+  private static final UUID DEFAULT_ORGANIZATION_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
+
   @Test
   void 실제_마이그레이션된_스키마에_사건을_저장하고_조회할_수_있다() {
     Incident incident = Incident.manualReport(
-        "2026-CT-0001", IncidentType.FIRE, "서울시 테스트구 테스트로 1",
+        DEFAULT_ORGANIZATION_ID, "2026-CT-0001", IncidentType.FIRE, "서울시 테스트구 테스트로 1",
         new BigDecimal("37.5665"), new BigDecimal("126.9780"), LocalDateTime.now(), null);
 
     Incident saved = incidentRepository.save(incident);

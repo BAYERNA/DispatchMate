@@ -26,6 +26,11 @@ public class Incident {
   @Column(name = "incident_id")
   private UUID incidentId;
 
+  // 멀티테넌시 1단계(V17): 이 출동이 속한 조직. CCTV 자동감지 경로는 로그인 사용자가 없으므로
+  // 감지한 카메라(device)의 organizationId를 그대로 상속한다.
+  @Column(name = "organization_id", nullable = false)
+  private UUID organizationId;
+
   @Column(name = "incident_number", nullable = false, unique = true, length = 30)
   private String incidentNumber;
 
@@ -68,6 +73,7 @@ public class Incident {
   protected Incident() {}
 
   private Incident(
+      UUID organizationId,
       String incidentNumber,
       IncidentType incidentType,
       String address,
@@ -77,6 +83,7 @@ public class Incident {
       IncidentStatus status,
       IncidentSource source,
       UUID commanderId) {
+    this.organizationId = organizationId;
     this.incidentNumber = incidentNumber;
     this.incidentType = incidentType;
     this.address = address;
@@ -91,6 +98,7 @@ public class Incident {
 
   // FR-01 이후 흐름: 사람이 119에 직접 신고 — 관제 확인 절차 없이 곧바로 정식 출동.
   public static Incident manualReport(
+      UUID organizationId,
       String incidentNumber,
       IncidentType incidentType,
       String address,
@@ -99,16 +107,22 @@ public class Incident {
       LocalDateTime reportedAt,
       UUID commanderId) {
     return new Incident(
-        incidentNumber, incidentType, address, latitude, longitude, reportedAt, IncidentStatus.DISPATCHED,
-        IncidentSource.MANUAL_REPORT, commanderId);
+        organizationId, incidentNumber, incidentType, address, latitude, longitude, reportedAt,
+        IncidentStatus.DISPATCHED, IncidentSource.MANUAL_REPORT, commanderId);
   }
 
   // FR-24: CCTV가 화재를 의심 감지 — NFR-08에 따라 절대 이 시점에서 DISPATCHED가 될 수 없다.
+  // organizationId는 감지한 카메라(device)의 소속 조직을 그대로 물려받는다(로그인 사용자 없음).
   public static Incident cctvSuspected(
-      String incidentNumber, String address, BigDecimal latitude, BigDecimal longitude, LocalDateTime reportedAt) {
+      UUID organizationId,
+      String incidentNumber,
+      String address,
+      BigDecimal latitude,
+      BigDecimal longitude,
+      LocalDateTime reportedAt) {
     return new Incident(
-        incidentNumber, IncidentType.FIRE, address, latitude, longitude, reportedAt, IncidentStatus.AI_SUSPECTED,
-        IncidentSource.CCTV_AUTO_DETECTION, null);
+        organizationId, incidentNumber, IncidentType.FIRE, address, latitude, longitude, reportedAt,
+        IncidentStatus.AI_SUSPECTED, IncidentSource.CCTV_AUTO_DETECTION, null);
   }
 
   // NFR-08: 이 전환의 호출자가 실제로 role=ADMIN인지는 IncidentConfirmService가 API 레벨에서
@@ -159,6 +173,10 @@ public class Incident {
 
   public UUID getIncidentId() {
     return incidentId;
+  }
+
+  public UUID getOrganizationId() {
+    return organizationId;
   }
 
   public String getIncidentNumber() {

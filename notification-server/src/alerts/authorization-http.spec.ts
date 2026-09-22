@@ -8,21 +8,24 @@ import { AuthModule } from '../auth/auth.module';
 import { SessionService } from '../auth/session.service';
 import { Alert } from './entities/alert.entity';
 import { IncidentAssignment } from './entities/incident-assignment.entity';
+import { Incident } from './entities/incident.entity';
 import { AlertAcknowledgement } from '../acknowledgements/entities/alert-acknowledgement.entity';
 
 describe('HTTP authorization wiring (real controllers and guards, mocked repositories)', () => {
   let app: INestApplication, base: string;
   const incidentId='00000000-0000-4000-8000-000000000001';
   const alertId='00000000-0000-4000-8000-000000000002';
+  const organizationId='org-1';
   const assignments={findOne:jest.fn()};
   const query = jest.fn().mockResolvedValue([]);
   let role = 'RESPONDER';
   let targetUserId: string | null = null;
   beforeAll(async()=>{
     const module=await Test.createTestingModule({imports:[ConfigModule.forRoot({isGlobal:true}),AuthModule,AlertsModule,AckModule]})
-      .overrideProvider(SessionService).useValue({verify:async()=>({userId:'u',role})})
+      .overrideProvider(SessionService).useValue({verify:async()=>({userId:'u',role,organizationId})})
       .overrideProvider(getRepositoryToken(Alert)).useValue({query,find:async()=>[],findOne:async()=>({alertId,incidentId,targetUserId})})
       .overrideProvider(getRepositoryToken(IncidentAssignment)).useValue(assignments)
+      .overrideProvider(getRepositoryToken(Incident)).useValue({findOne:async()=>({incidentId,organizationId})})
       .overrideProvider(getRepositoryToken(AlertAcknowledgement)).useValue({find:async()=>[]})
       .compile();
     app=module.createNestApplication();

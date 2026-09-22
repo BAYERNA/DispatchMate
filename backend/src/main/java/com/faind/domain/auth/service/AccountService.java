@@ -36,35 +36,37 @@ public class AccountService {
     this.temporaryPasswordGenerator = temporaryPasswordGenerator;
   }
 
-  public Page<AccountResponse> list(String keyword, String role, Pageable pageable) {
-    return userRepository.findAll(UserSpecifications.search(keyword, role), pageable).map(AccountResponse::from);
+  public Page<AccountResponse> list(UUID organizationId, String keyword, String role, Pageable pageable) {
+    return userRepository.findAll(UserSpecifications.search(organizationId, keyword, role), pageable)
+        .map(AccountResponse::from);
   }
 
-  public AccountResponse getAccount(UUID userId) {
-    return AccountResponse.from(findUser(userId));
+  public AccountResponse getAccount(UUID organizationId, UUID userId) {
+    return AccountResponse.from(findUser(organizationId, userId));
   }
 
   // device 패키지가 "매핑대원 검색"(NFR-05)을 위해 이름/사번/소속으로 매칭되는 user_id만 조회할 때 사용.
   // Device 엔티티나 리포지토리를 직접 참조하지 않고, 이 서비스 인터페이스를 거치도록 해 도메인 경계를 지킨다.
-  public List<UUID> findUserIdsByKeyword(String keyword) {
+  public List<UUID> findUserIdsByKeyword(UUID organizationId, String keyword) {
     if (keyword == null || keyword.isBlank()) {
       return List.of();
     }
-    return userRepository.findAll(UserSpecifications.search(keyword, "ALL")).stream()
+    return userRepository.findAll(UserSpecifications.search(organizationId, keyword, "ALL")).stream()
         .map(User::getUserId)
         .toList();
   }
 
   @Transactional
-  public AccountCreatedResponse register(AccountRequest request) {
+  public AccountCreatedResponse register(UUID organizationId, AccountRequest request) {
     if (request.badgeNumber() == null || request.badgeNumber().isBlank()) {
       throw new BusinessException(ErrorCode.INVALID_INPUT, "사번은 필수입니다.");
     }
-    if (userRepository.existsByBadgeNumber(request.badgeNumber())) {
+    if (userRepository.existsByOrganizationIdAndBadgeNumber(organizationId, request.badgeNumber())) {
       throw new BusinessException(ErrorCode.DUPLICATE_BADGE_NUMBER);
     }
     String temporaryPassword = temporaryPasswordGenerator.generate();
     User user = new User(
+        organizationId,
         request.name(),
         request.role(),
         request.badgeNumber(),
@@ -76,23 +78,23 @@ public class AccountService {
   }
 
   @Transactional
-  public AccountResponse update(UUID userId, AccountRequest request) {
-    User user = findUser(userId);
+  public AccountResponse update(UUID organizationId, UUID userId, AccountRequest request) {
+    User user = findUser(organizationId, userId);
     user.update(request.name(), request.team(), request.phone(), request.role());
     return AccountResponse.from(user);
   }
 
   @Transactional
-  public AccountCreatedResponse reissueTemporaryPassword(UUID userId) {
-    User user = findUser(userId);
+  public AccountCreatedResponse reissueTemporaryPassword(UUID organizationId, UUID userId) {
+    User user = findUser(organizationId, userId);
     String temporaryPassword = temporaryPasswordGenerator.generate();
     user.resetPassword(passwordEncoder.encode(temporaryPassword));
     return new AccountCreatedResponse(AccountResponse.from(user), temporaryPassword);
   }
 
   @Transactional
-  public void deactivate(UUID userId) {
-    findUser(userId).deactivate();
+  public void deactivate(UUID organizationId, UUID userId) {
+    findUser(organizationId, userId).deactivate();
   }
 
   // device 패키지가 매핑대원 이름·소속팀을 응답 DTO에 채울 때 사용 (Device 엔티티 직접 접근 없이 호출).
@@ -106,11 +108,17 @@ public class AccountService {
 
   // ADM-001 관리자 홈(FR-09) "근무 대원" 카드. 근무편성(ADM-005)은 Won't Have라 별도 duty-shift
   // 개념이 없으므로, 이번 스코프에서는 "활성 대원 계정 수"를 근사치로 사용한다.
-  public long countActiveResponders() {
-    return userRepository.countByRoleAndStatus("RESPONDER", "ACTIVE");
+  public long countActiveResponders(UUID organizationId) {
+    return userRepository.countByOrganizationIdAndRoleAndStatus(organizationId, "RESPONDER", "ACTIVE");
   }
 
-  private User findUser(UUID userId) {
-    return userRepository.findById(userId).orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+  // organizationId까지 일치해야 조회되도록 해 다른 조직의 user_id를 추측해 조회·수정·비활성화
+  // 하는 경로를 막는다(멀티테넌시 1단계 격리).
+  private User findUser(UUID organizationId, UUID userId) {
+    User user = userRepository.findById(userId).orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    if (!user.getOrganizationId().equals(organizationId)) {
+      throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+    }
+    return user;
   }
 }

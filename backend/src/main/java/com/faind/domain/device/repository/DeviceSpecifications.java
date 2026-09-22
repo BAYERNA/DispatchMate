@@ -14,9 +14,11 @@ public final class DeviceSpecifications {
 
   // "기기ID·매핑대원 검색" — 매핑대원 이름은 device 패키지가 직접 조회하지 않고(도메인 경계 원칙),
   // AccountService를 통해 미리 조회한 매칭 user_id 목록(matchedUserIds)을 받아 OR 조건으로 합친다.
-  public static Specification<Device> search(String keyword, DeviceType deviceType, List<UUID> matchedUserIds) {
+  // organizationId는 UserSpecifications.search()와 동일한 이유로 필수 인자다(멀티테넌시 1단계, V17).
+  public static Specification<Device> search(
+      UUID organizationId, String keyword, DeviceType deviceType, List<UUID> matchedUserIds) {
     return (root, query, cb) -> {
-      var predicates = cb.conjunction();
+      var predicates = cb.equal(root.get("organizationId"), organizationId);
       if (StringUtils.hasText(keyword)) {
         String pattern = "%" + keyword.trim().toLowerCase() + "%";
         var keywordPredicate = cb.like(cb.lower(root.get("serialNo")), pattern);

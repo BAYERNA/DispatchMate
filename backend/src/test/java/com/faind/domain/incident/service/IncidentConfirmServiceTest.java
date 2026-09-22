@@ -35,13 +35,15 @@ class IncidentConfirmServiceTest {
     confirmService = new IncidentConfirmService(incidentRepository, eventPublisher);
   }
 
+  private static final UUID ORG_ID = UUID.randomUUID();
+
   private Incident aiSuspectedIncident() {
-    return Incident.cctvSuspected("2026-0001", "CCTV-014", null, null, LocalDateTime.now());
+    return Incident.cctvSuspected(ORG_ID, "2026-0001", "CCTV-014", null, null, LocalDateTime.now());
   }
 
   @Test
   void ADMIN이_아니면_확정할_수_없다() {
-    AuthenticatedUser commander = new AuthenticatedUser(UUID.randomUUID(), "COMMANDER");
+    AuthenticatedUser commander = new AuthenticatedUser(UUID.randomUUID(), "COMMANDER", ORG_ID);
 
     assertThatThrownBy(() -> confirmService.confirm(UUID.randomUUID(), commander))
         .isInstanceOf(BusinessException.class);
@@ -56,7 +58,7 @@ class IncidentConfirmServiceTest {
   @Test
   void ADMIN은_AI_의심감지를_출동으로_확정할_수_있다() {
     UUID incidentId = UUID.randomUUID();
-    AuthenticatedUser admin = new AuthenticatedUser(UUID.randomUUID(), "ADMIN");
+    AuthenticatedUser admin = new AuthenticatedUser(UUID.randomUUID(), "ADMIN", ORG_ID);
     Incident incident = aiSuspectedIncident();
     when(incidentRepository.findById(incidentId)).thenReturn(Optional.of(incident));
 
@@ -67,7 +69,7 @@ class IncidentConfirmServiceTest {
 
   @Test
   void ADMIN이_아니면_오탐_처리도_할_수_없다() {
-    AuthenticatedUser responder = new AuthenticatedUser(UUID.randomUUID(), "RESPONDER");
+    AuthenticatedUser responder = new AuthenticatedUser(UUID.randomUUID(), "RESPONDER", ORG_ID);
 
     assertThatThrownBy(() -> confirmService.rejectAsFalsePositive(UUID.randomUUID(), responder))
         .isInstanceOf(BusinessException.class);
@@ -76,7 +78,7 @@ class IncidentConfirmServiceTest {
   @Test
   void ADMIN은_오탐_처리를_할_수_있다() {
     UUID incidentId = UUID.randomUUID();
-    AuthenticatedUser admin = new AuthenticatedUser(UUID.randomUUID(), "ADMIN");
+    AuthenticatedUser admin = new AuthenticatedUser(UUID.randomUUID(), "ADMIN", ORG_ID);
     Incident incident = aiSuspectedIncident();
     when(incidentRepository.findById(incidentId)).thenReturn(Optional.of(incident));
 

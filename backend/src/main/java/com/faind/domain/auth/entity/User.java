@@ -20,6 +20,10 @@ public class User {
   @Column(name = "user_id")
   private UUID userId;
 
+  // 멀티테넌시 1단계(V17): 이 사용자가 속한 조직. badge_number는 이제 조직 안에서만 유일하다.
+  @Column(name = "organization_id", nullable = false)
+  private UUID organizationId;
+
   @Column(nullable = false, length = 50)
   private String name;
 
@@ -57,7 +61,8 @@ public class User {
 
   protected User() {}
 
-  public User(String name, String role, String badgeNumber, String team, String phone, String passwordHash) {
+  public User(UUID organizationId, String name, String role, String badgeNumber, String team, String phone, String passwordHash) {
+    this.organizationId = organizationId;
     this.name = name;
     this.role = role;
     this.badgeNumber = badgeNumber;
@@ -105,6 +110,10 @@ public class User {
 
   public UUID getUserId() {
     return userId;
+  }
+
+  public UUID getOrganizationId() {
+    return organizationId;
   }
 
   public String getName() {

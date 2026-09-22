@@ -55,8 +55,8 @@ public class DroneDispatchService {
     Incident incident = incidentRepository.findById(incidentId)
         .orElseThrow(() -> new BusinessException(ErrorCode.INCIDENT_NOT_FOUND));
 
-    Optional<NearestDroneResponse> nearestDrone =
-        deviceService.findNearestAvailableDrone(incident.getLatitude(), incident.getLongitude());
+    Optional<NearestDroneResponse> nearestDrone = deviceService.findNearestAvailableDrone(
+        incident.getOrganizationId(), incident.getLatitude(), incident.getLongitude());
     if (nearestDrone.isEmpty()) {
       log.info("배정 가능한 드론이 없어 FR-25 자동배정을 건너뜁니다 (incidentId={})", incidentId);
       return Optional.empty();

@@ -4,6 +4,8 @@ import com.faind.domain.auth.dto.AccountCreatedResponse;
 import com.faind.domain.auth.dto.AccountRequest;
 import com.faind.domain.auth.dto.AccountResponse;
 import com.faind.domain.auth.service.AccountService;
+import com.faind.global.security.AuthenticatedUser;
+import com.faind.global.security.CurrentUser;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -38,37 +40,41 @@ public class AccountController {
   @GetMapping
   @PreAuthorize("hasAnyRole('COMMANDER','ADMIN')")
   public ResponseEntity<Page<AccountResponse>> list(
+      @CurrentUser AuthenticatedUser currentUser,
       @RequestParam(required = false) String keyword,
       @RequestParam(required = false, defaultValue = "ALL") String role,
       Pageable pageable) {
-    return ResponseEntity.ok(accountService.list(keyword, role, pageable));
+    return ResponseEntity.ok(accountService.list(currentUser.organizationId(), keyword, role, pageable));
   }
 
   // CMD-002/003: 지휘관도 현장 대원 식별을 위해 개별 계정 조회는 허용한다 (목록·등록·수정은 ADMIN 전용 유지).
   @GetMapping("/{userId}")
   @PreAuthorize("hasAnyRole('COMMANDER','ADMIN')")
-  public ResponseEntity<AccountResponse> get(@PathVariable UUID userId) {
-    return ResponseEntity.ok(accountService.getAccount(userId));
+  public ResponseEntity<AccountResponse> get(@CurrentUser AuthenticatedUser currentUser, @PathVariable UUID userId) {
+    return ResponseEntity.ok(accountService.getAccount(currentUser.organizationId(), userId));
   }
 
   @PostMapping
-  public ResponseEntity<AccountCreatedResponse> register(@Valid @RequestBody AccountRequest request) {
-    return ResponseEntity.ok(accountService.register(request));
+  public ResponseEntity<AccountCreatedResponse> register(
+      @CurrentUser AuthenticatedUser currentUser, @Valid @RequestBody AccountRequest request) {
+    return ResponseEntity.ok(accountService.register(currentUser.organizationId(), request));
   }
 
   @PutMapping("/{userId}")
-  public ResponseEntity<AccountResponse> update(@PathVariable UUID userId, @Valid @RequestBody AccountRequest request) {
-    return ResponseEntity.ok(accountService.update(userId, request));
+  public ResponseEntity<AccountResponse> update(
+      @CurrentUser AuthenticatedUser currentUser, @PathVariable UUID userId, @Valid @RequestBody AccountRequest request) {
+    return ResponseEntity.ok(accountService.update(currentUser.organizationId(), userId, request));
   }
 
   @PatchMapping("/{userId}/password/reissue")
-  public ResponseEntity<AccountCreatedResponse> reissuePassword(@PathVariable UUID userId) {
-    return ResponseEntity.ok(accountService.reissueTemporaryPassword(userId));
+  public ResponseEntity<AccountCreatedResponse> reissuePassword(
+      @CurrentUser AuthenticatedUser currentUser, @PathVariable UUID userId) {
+    return ResponseEntity.ok(accountService.reissueTemporaryPassword(currentUser.organizationId(), userId));
   }
 
   @DeleteMapping("/{userId}")
-  public ResponseEntity<Void> deactivate(@PathVariable UUID userId) {
-    accountService.deactivate(userId);
+  public ResponseEntity<Void> deactivate(@CurrentUser AuthenticatedUser currentUser, @PathVariable UUID userId) {
+    accountService.deactivate(currentUser.organizationId(), userId);
     return ResponseEntity.noContent().build();
   }
 }

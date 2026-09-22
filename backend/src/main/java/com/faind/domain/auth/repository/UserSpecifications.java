@@ -1,6 +1,7 @@
 package com.faind.domain.auth.repository;
 
 import com.faind.domain.auth.entity.User;
+import java.util.UUID;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.util.StringUtils;
 
@@ -10,9 +11,13 @@ public final class UserSpecifications {
 
   private UserSpecifications() {}
 
-  public static Specification<User> search(String keyword, String role) {
+  // organizationId는 선택 파라미터가 아니다 — 호출자가 항상 현재 로그인한 관리자의 조직을
+  // 넘겨야 한다(멀티테넌시 1단계, V17). null을 넘기면 모든 조직의 계정이 섞여 보이는
+  // 심각한 격리 결함이 되므로, 호출부에서 실수로 생략하기 어렵도록 keyword/role과 분리된
+  // 필수 인자로 둔다.
+  public static Specification<User> search(UUID organizationId, String keyword, String role) {
     return (root, query, cb) -> {
-      var predicates = cb.conjunction();
+      var predicates = cb.equal(root.get("organizationId"), organizationId);
       if (StringUtils.hasText(keyword)) {
         String pattern = "%" + keyword.trim().toLowerCase() + "%";
         predicates = cb.and(

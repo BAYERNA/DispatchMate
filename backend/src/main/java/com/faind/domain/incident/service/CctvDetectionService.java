@@ -46,6 +46,7 @@ public class CctvDetectionService {
     LocalDateTime detectedAt = request.detectedAt() != null ? request.detectedAt() : LocalDateTime.now();
 
     Incident incident = Incident.cctvSuspected(
+        camera.organizationId(),
         incidentNumberGenerator.next(),
         request.addressHint() != null ? request.addressHint() : camera.serialNo(),
         camera.latitude(),

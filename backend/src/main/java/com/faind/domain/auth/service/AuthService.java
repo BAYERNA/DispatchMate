@@ -5,6 +5,8 @@ import com.faind.domain.auth.dto.LoginResponse;
 import com.faind.domain.auth.dto.SetInitialPasswordRequest;
 import com.faind.domain.auth.entity.User;
 import com.faind.domain.auth.repository.UserRepository;
+import com.faind.domain.organization.entity.Organization;
+import com.faind.domain.organization.repository.OrganizationRepository;
 import com.faind.global.error.BusinessException;
 import com.faind.global.error.ErrorCode;
 import com.faind.global.security.JwtTokenProvider;
@@ -28,30 +30,41 @@ public class AuthService {
   private static final Duration LOGIN_ATTEMPT_WINDOW = Duration.ofMinutes(15);
 
   private final UserRepository userRepository;
+  private final OrganizationRepository organizationRepository;
   private final PasswordEncoder passwordEncoder;
   private final JwtTokenProvider jwtTokenProvider;
   private final StringRedisTemplate redisTemplate;
 
   public AuthService(
       UserRepository userRepository,
+      OrganizationRepository organizationRepository,
       PasswordEncoder passwordEncoder,
       JwtTokenProvider jwtTokenProvider,
       StringRedisTemplate redisTemplate) {
     this.userRepository = userRepository;
+    this.organizationRepository = organizationRepository;
     this.passwordEncoder = passwordEncoder;
     this.jwtTokenProvider = jwtTokenProvider;
     this.redisTemplate = redisTemplate;
   }
 
   public LoginResponse login(LoginRequest request) {
-    String attemptKey = LOGIN_ATTEMPT_KEY_PREFIX + request.badgeNumber();
+    // 조직 코드 + 사번을 합쳐서 잠금 키로 쓴다 — 다른 조직의 동일 사번 계정에 대한 시도가
+    // 서로의 실패 횟수를 공유하지 않도록 한다.
+    String attemptKey = LOGIN_ATTEMPT_KEY_PREFIX + request.organizationCode() + ":" + request.badgeNumber();
     String attemptsRaw = redisTemplate.opsForValue().get(attemptKey);
     int attempts = attemptsRaw == null ? 0 : Integer.parseInt(attemptsRaw);
     if (attempts >= MAX_LOGIN_ATTEMPTS) {
       throw new BusinessException(ErrorCode.TOO_MANY_LOGIN_ATTEMPTS);
     }
 
-    User user = userRepository.findByBadgeNumber(request.badgeNumber()).orElse(null);
+    // 존재하지 않는 조직 코드도 잘못된 사번/비밀번호와 동일하게 취급한다 — 조직 코드의
+    // 존재 여부 자체가 노출되지 않도록 한다.
+    Organization organization = organizationRepository.findByCode(request.organizationCode()).orElse(null);
+    User user = organization == null
+        ? null
+        : userRepository.findByOrganizationIdAndBadgeNumber(organization.getOrganizationId(), request.badgeNumber())
+            .orElse(null);
     if (user == null || !"ACTIVE".equals(user.getStatus()) || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
       recordFailedAttempt(attemptKey);
       throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
@@ -59,7 +72,8 @@ public class AuthService {
 
     redisTemplate.delete(attemptKey);
     String accessToken = jwtTokenProvider.createToken(user.getUserId(), user.getBadgeNumber(), user.getRole(), user.getTokenVersion());
-    return new LoginResponse(accessToken, user.getUserId(), user.getName(), user.getRole(), user.isInitialPassword());
+    return new LoginResponse(
+        accessToken, user.getUserId(), user.getOrganizationId(), user.getName(), user.getRole(), user.isInitialPassword());
   }
 
   private void recordFailedAttempt(String key) {

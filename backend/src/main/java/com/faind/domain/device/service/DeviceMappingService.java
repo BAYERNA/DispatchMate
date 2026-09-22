@@ -1,5 +1,6 @@
 package com.faind.domain.device.service;
 
+import com.faind.domain.auth.service.AccountService;
 import com.faind.domain.device.dto.DeviceResponse;
 import com.faind.domain.device.entity.Device;
 import com.faind.domain.device.repository.DeviceRepository;
@@ -16,16 +17,25 @@ public class DeviceMappingService {
 
   private final DeviceRepository deviceRepository;
   private final DeviceService deviceService;
+  private final AccountService accountService;
 
-  public DeviceMappingService(DeviceRepository deviceRepository, DeviceService deviceService) {
+  public DeviceMappingService(
+      DeviceRepository deviceRepository, DeviceService deviceService, AccountService accountService) {
     this.deviceRepository = deviceRepository;
     this.deviceService = deviceService;
+    this.accountService = accountService;
   }
 
   @Transactional
-  public DeviceResponse remap(UUID deviceId, UUID newUserId) {
+  public DeviceResponse remap(UUID organizationId, UUID deviceId, UUID newUserId) {
     Device device = deviceRepository.findById(deviceId)
         .orElseThrow(() -> new BusinessException(ErrorCode.DEVICE_NOT_FOUND));
+    if (!device.getOrganizationId().equals(organizationId)) {
+      throw new BusinessException(ErrorCode.DEVICE_NOT_FOUND);
+    }
+    // getAccount()가 organizationId까지 검증하므로, 다른 조직 소속 대원에게 기기를 매핑하는
+    // 경로를 여기서 함께 차단한다(멀티테넌시 1단계).
+    accountService.getAccount(organizationId, newUserId);
     device.remap(newUserId);
     return deviceService.get(deviceId);
   }

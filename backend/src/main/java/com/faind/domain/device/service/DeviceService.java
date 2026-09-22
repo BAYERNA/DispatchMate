@@ -39,14 +39,17 @@ public class DeviceService {
     this.accountService = accountService;
   }
 
-  public Page<DeviceResponse> list(String keyword, String deviceTypeParam, Pageable pageable) {
+  public Page<DeviceResponse> list(UUID organizationId, String keyword, String deviceTypeParam, Pageable pageable) {
     DeviceType deviceType = parseType(deviceTypeParam);
-    List<UUID> matchedUserIds = accountService.findUserIdsByKeyword(keyword);
-    Page<Device> devices =
-        deviceRepository.findAll(DeviceSpecifications.search(keyword, deviceType, matchedUserIds), pageable);
+    List<UUID> matchedUserIds = accountService.findUserIdsByKeyword(organizationId, keyword);
+    Page<Device> devices = deviceRepository.findAll(
+        DeviceSpecifications.search(organizationId, keyword, deviceType, matchedUserIds), pageable);
     return enrich(devices);
   }
 
+  // CctvDetectionService처럼 로그인 사용자가 없는 내부 호출 경로에서도 카메라 조회가 필요해
+  // organizationId로 스코프하지 않는다 — 응답에 담긴 organizationId 자체가 호출부의 신뢰 근거가 된다.
+  // 관리자 화면(컨트롤러) 쪽 조회는 getForOrganization()을 대신 쓴다.
   public DeviceResponse get(UUID deviceId) {
     Device device = findDevice(deviceId);
     Map<UUID, AccountResponse> accounts =
@@ -56,8 +59,16 @@ public class DeviceService {
     return toResponse(device, accounts);
   }
 
+  public DeviceResponse getForOrganization(UUID organizationId, UUID deviceId) {
+    DeviceResponse response = get(deviceId);
+    if (!response.organizationId().equals(organizationId)) {
+      throw new BusinessException(ErrorCode.DEVICE_NOT_FOUND);
+    }
+    return response;
+  }
+
   @Transactional
-  public DeviceResponse register(DeviceRequest request) {
+  public DeviceResponse register(UUID organizationId, DeviceRequest request) {
     DeviceType deviceType = parseType(request.deviceType());
     if (deviceRepository.existsBySerialNo(request.serialNo())) {
       throw new BusinessException(ErrorCode.DUPLICATE_SERIAL_NO);
@@ -81,30 +92,32 @@ public class DeviceService {
 
     // 등록(row 생성)과 매핑(current_user_id 설정)이 같은 save 호출, 같은 트랜잭션 안에서 실행된다.
     Device device = new Device(
-        deviceType, request.serialNo(), request.connectionType(), mappedUserId, latitude, longitude,
+        organizationId, deviceType, request.serialNo(), request.connectionType(), mappedUserId, latitude, longitude,
         request.batteryLevel(), streamUrl);
     deviceRepository.save(device);
     return get(device.getDeviceId());
   }
 
   @Transactional
-  public DeviceResponse relocate(UUID deviceId, BigDecimal latitude, BigDecimal longitude) {
-    Device device = findDevice(deviceId);
+  public DeviceResponse relocate(UUID organizationId, UUID deviceId, BigDecimal latitude, BigDecimal longitude) {
+    Device device = findDevice(organizationId, deviceId);
     device.relocate(latitude, longitude);
     return get(deviceId);
   }
 
   @Transactional
-  public DeviceResponse updateStreamUrl(UUID deviceId, String streamUrl) {
-    Device device = findDevice(deviceId);
+  public DeviceResponse updateStreamUrl(UUID organizationId, UUID deviceId, String streamUrl) {
+    Device device = findDevice(organizationId, deviceId);
     device.updateStreamUrl(streamUrl);
     return get(deviceId);
   }
 
   // CMD-002 라이브 카메라 선택 드롭다운(FR-24/26) - COMMANDER도 접근 가능해야 하므로 대원 매핑
   // 정보 없이 카메라 목록만 좁게 반환한다.
-  public List<CameraResponse> listCameras() {
-    return deviceRepository.findByDeviceType(DeviceType.CCTV).stream().map(CameraResponse::from).toList();
+  public List<CameraResponse> listCameras(UUID organizationId) {
+    return deviceRepository.findByOrganizationIdAndDeviceType(organizationId, DeviceType.CCTV).stream()
+        .map(CameraResponse::from)
+        .toList();
   }
 
   private Page<DeviceResponse> enrich(Page<Device> devices) {
@@ -127,11 +140,14 @@ public class DeviceService {
   }
 
   // FR-25: incident 패키지가 드론 자동배정 시 호출. status='NORMAL'인 드론 중 현장에서 가장 가까운 1대.
-  public Optional<NearestDroneResponse> findNearestAvailableDrone(BigDecimal targetLat, BigDecimal targetLng) {
+  // organizationId로 스코프해 다른 조직의 드론이 잘못 배정되지 않도록 한다(멀티테넌시 1단계).
+  public Optional<NearestDroneResponse> findNearestAvailableDrone(
+      UUID organizationId, BigDecimal targetLat, BigDecimal targetLng) {
     if (targetLat == null || targetLng == null) {
       return Optional.empty();
     }
-    return deviceRepository.findByDeviceTypeAndStatus(DeviceType.DRONE, "NORMAL").stream()
+    return deviceRepository.findByOrganizationIdAndDeviceTypeAndStatus(organizationId, DeviceType.DRONE, "NORMAL")
+        .stream()
         .filter(d -> d.getLatitude() != null && d.getLongitude() != null)
         .min(Comparator.comparingDouble(d -> GeoUtil.haversineKm(
             d.getLatitude().doubleValue(), d.getLongitude().doubleValue(), targetLat.doubleValue(), targetLng.doubleValue())))
@@ -153,12 +169,21 @@ public class DeviceService {
   }
 
   // ADM-001 관리자 홈(FR-09) "기기 이상" 카드.
-  public long countAnomalies() {
-    return deviceRepository.countByStatusIn(List.of("WARNING", "DISCONNECTED"));
+  public long countAnomalies(UUID organizationId) {
+    return deviceRepository.countByOrganizationIdAndStatusIn(organizationId, List.of("WARNING", "DISCONNECTED"));
   }
 
   private Device findDevice(UUID deviceId) {
     return deviceRepository.findById(deviceId).orElseThrow(() -> new BusinessException(ErrorCode.DEVICE_NOT_FOUND));
+  }
+
+  // 쓰기 경로(위치·스트림 URL 변경)는 조직 경계를 반드시 확인해야 하므로 이 스코프된 버전을 쓴다.
+  private Device findDevice(UUID organizationId, UUID deviceId) {
+    Device device = findDevice(deviceId);
+    if (!device.getOrganizationId().equals(organizationId)) {
+      throw new BusinessException(ErrorCode.DEVICE_NOT_FOUND);
+    }
+    return device;
   }
 
   private DeviceType parseType(String deviceTypeParam) {
