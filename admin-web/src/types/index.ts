@@ -1,6 +1,6 @@
 // backend(Java)의 각 도메인 응답 DTO와 1:1로 맞춘 타입. 필드명은 Jackson 기본 camelCase 직렬화를 그대로 따른다.
 
-export type Role = 'ADMIN' | 'COMMANDER' | 'RESPONDER'
+export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'COMMANDER' | 'RESPONDER'
 
 export interface LoginResponse {
   accessToken: string
@@ -34,6 +34,18 @@ export interface Page<T> {
   size: number
   first: boolean
   last: boolean
+}
+
+// 조직 온보딩(6번): 슈퍼관리자가 조직을 만들고 첫 ADMIN 계정을 발급하는 화면 전용.
+export type OrganizationType = 'PUBLIC' | 'CORPORATE'
+
+export interface OrganizationResponse {
+  organizationId: string
+  code: string
+  name: string
+  type: OrganizationType
+  status: string
+  createdAt: string
 }
 
 export type DeviceType = 'BODYCAM' | 'SMARTPHONE' | 'DIGITAL_MASK' | 'SENSOR' | 'CCTV' | 'DRONE'

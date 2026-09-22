@@ -7,7 +7,12 @@ import { ApiError } from '../api/client'
 import { deactivateAccount, listAccounts, reissuePassword } from '../api/accounts'
 import type { Role } from '../types'
 
-const ROLE_LABEL: Record<Role, string> = { ADMIN: '관리자', COMMANDER: '지휘관', RESPONDER: '대원' }
+const ROLE_LABEL: Record<Role, string> = {
+  SUPER_ADMIN: '슈퍼관리자',
+  ADMIN: '관리자',
+  COMMANDER: '지휘관',
+  RESPONDER: '대원',
+}
 
 // ADM-002 대원 계정 목록 (FR-10, NFR-05)
 // QA 재검증 대상: 검색·필터가 실제 API 쿼리 파라미터로 나가는지가 핵심이므로, keyword/role을

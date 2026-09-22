@@ -7,7 +7,7 @@ import { z } from 'zod'
 export const authUserSchema = z.object({
   userId: z.string(),
   name: z.string(),
-  role: z.enum(['ADMIN', 'COMMANDER', 'RESPONDER']),
+  role: z.enum(['SUPER_ADMIN', 'ADMIN', 'COMMANDER', 'RESPONDER']),
   initialPassword: z.boolean(),
 })
 

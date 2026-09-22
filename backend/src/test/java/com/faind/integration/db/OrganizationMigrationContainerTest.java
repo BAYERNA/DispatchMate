@@ -96,6 +96,30 @@ class OrganizationMigrationContainerTest {
         .hasMessageContaining("uq_federation_agencies_org_code");
   }
 
+  // V20: 조직 온보딩 부트스트랩 — SUPER_ADMIN 역할이 허용되고, 로그인 가능한 초기 계정이
+  // 실제로 존재해야 한다(이게 없으면 새 조직을 만들 방법 자체가 없다).
+  @Test
+  void 부트스트랩_SUPER_ADMIN_계정이_DEFAULT_조직에_존재한다() {
+    Integer count = jdbcTemplate.queryForObject(
+        "SELECT count(*) FROM users u JOIN organizations o ON o.organization_id = u.organization_id "
+            + "WHERE u.role = 'SUPER_ADMIN' AND u.badge_number = 'SUPERADMIN' AND o.code = 'DEFAULT'",
+        Integer.class);
+    assertThat(count).isEqualTo(1);
+  }
+
+  @Test
+  void users_role_제약이_SUPER_ADMIN을_허용한다() {
+    UUID org = insertOrganization("ORG-G", "테스트조직G");
+    jdbcTemplate.update(
+        "INSERT INTO users(organization_id, name, role, badge_number, password_hash) "
+            + "VALUES (?, '테스트', 'SUPER_ADMIN', 'SA-TEST', 'hash')",
+        org);
+
+    Integer count = jdbcTemplate.queryForObject(
+        "SELECT count(*) FROM users WHERE badge_number = 'SA-TEST' AND role = 'SUPER_ADMIN'", Integer.class);
+    assertThat(count).isEqualTo(1);
+  }
+
   private void insertFederationAgency(UUID organizationId, String agencyCode, String name) {
     jdbcTemplate.update(
         "INSERT INTO federation_agencies(organization_id, agency_code, name) VALUES (?, ?, ?)",

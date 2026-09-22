@@ -65,4 +65,8 @@ public class Organization {
   public String getStatus() {
     return status;
   }
+
+  public LocalDateTime getCreatedAt() {
+    return createdAt;
+  }
 }
