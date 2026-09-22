@@ -24,12 +24,14 @@ export class OperationsService {
       AND d.latitude IS NOT NULL AND d.longitude IS NOT NULL ORDER BY d.device_type,d.serial_no`,[incidentId]);
     return {incident:incidents[0],devices};
   }
+  // training_sessions은 organization_id가 없다 — created_by가 users에 거는 FK를 통해서만
+  // 조직을 알 수 있다(V19). 이 JOIN 조건을 빼먹으면 모든 조직의 훈련 세션이 그대로 섞여 보인다.
   trainingList(user:AuthenticatedUser) { this.operator(user); return this.db.query(`SELECT t.training_id AS "trainingId",t.title,t.scenario,t.status,
     t.created_by AS "createdBy",u.name AS "createdByName",t.started_at AS "startedAt",t.completed_at AS "completedAt",t.created_at AS "createdAt",
     COALESCE(jsonb_agg(jsonb_build_object('eventId',e.training_event_id,'eventType',e.event_type,'note',e.note,'occurredAt',e.occurred_at)
     ORDER BY e.occurred_at) FILTER(WHERE e.training_event_id IS NOT NULL),'[]'::jsonb) AS events
-    FROM training_sessions t JOIN users u ON u.user_id=t.created_by LEFT JOIN training_events e ON e.training_id=t.training_id
-    GROUP BY t.training_id,u.name ORDER BY t.created_at DESC`); }
+    FROM training_sessions t JOIN users u ON u.user_id=t.created_by AND u.organization_id=$1 LEFT JOIN training_events e ON e.training_id=t.training_id
+    GROUP BY t.training_id,u.name ORDER BY t.created_at DESC`,[user.organizationId]); }
   async createTraining(user:AuthenticatedUser,title:string,scenario:string) {
     this.operator(user);
     if(!title?.trim()||!['FIRE','RESCUE','HAZMAT','COMMUNICATION_LOSS'].includes(scenario)) throw new BadRequestException('훈련명과 시나리오를 확인하세요.');
@@ -38,6 +40,9 @@ export class OperationsService {
   }
   async trainingAction(id:string,user:AuthenticatedUser,action:string,note?:string) {
     this.operator(user);
+    const owner=(await this.db.query(`SELECT u.organization_id AS "organizationId" FROM training_sessions t JOIN users u ON u.user_id=t.created_by WHERE t.training_id=$1`,[id]))[0];
+    if(!owner) throw new NotFoundException();
+    if(owner.organizationId!==user.organizationId) throw new NotFoundException();
     if(action==='EVENT') {
       if(!note?.trim()) throw new BadRequestException('훈련 이벤트 내용을 입력하세요.');
       const rows=await this.db.query(`INSERT INTO training_events(training_id,event_type,note,created_by)
