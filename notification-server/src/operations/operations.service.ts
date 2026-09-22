@@ -3,9 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Alert } from '../alerts/entities/alert.entity';
 import { AuthenticatedUser } from '../auth/authenticated-user.interface';
+import { OrganizationScopeService } from '../common/organization-scope/organization-scope.service';
 @Injectable()
 export class OperationsService {
-  constructor(@InjectRepository(Alert) private readonly db: Repository<Alert>) {}
+  constructor(@InjectRepository(Alert) private readonly db: Repository<Alert>, private readonly orgScope: OrganizationScopeService) {}
   private operator(user: AuthenticatedUser) { if (!['ADMIN','COMMANDER'].includes(user.role)) throw new ForbiddenException(); }
   timeline(incidentId:string,user:AuthenticatedUser) { this.operator(user); return this.db.query(`SELECT e.event_id AS "eventId",e.event_type AS "eventType",
     e.actor_user_id AS "actorUserId",u.name AS "actorName",e.source_ref AS "sourceRef",e.summary,e.details,
@@ -54,6 +55,9 @@ export class OperationsService {
   }
   async feedback(judgmentId:string,user:AuthenticatedUser,verdict:string,note?:string) {
     this.operator(user); if(!['CORRECT','FALSE_POSITIVE','FALSE_NEGATIVE','UNSURE'].includes(verdict)) throw new BadRequestException('판정값을 확인하세요.');
+    const judgment=(await this.db.query(`SELECT related_incident_id FROM ai_judgment_logs WHERE judgment_id=$1`,[judgmentId]))[0];
+    if(!judgment) throw new NotFoundException();
+    if(judgment.related_incident_id) await this.orgScope.assertIncident(user,judgment.related_incident_id);
     const rows=await this.db.query(`INSERT INTO ai_judgment_feedback(judgment_id,verdict,note,reviewed_by)
       SELECT judgment_id,$2,$3,$4 FROM ai_judgment_logs WHERE judgment_id=$1 ON CONFLICT(judgment_id) DO UPDATE
       SET verdict=EXCLUDED.verdict,note=EXCLUDED.note,reviewed_by=EXCLUDED.reviewed_by,reviewed_at=now()

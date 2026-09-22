@@ -4,12 +4,16 @@ import { createHash, verify } from 'node:crypto';
 import { Repository } from 'typeorm';
 import { Alert } from '../alerts/entities/alert.entity';
 import { AuthenticatedUser } from '../auth/authenticated-user.interface';
+import { OrganizationScopeService } from '../common/organization-scope/organization-scope.service';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 
 @Injectable()
 export class AssuranceService {
-  constructor(@InjectRepository(Alert) private readonly db: Repository<Alert>) {}
+  constructor(
+    @InjectRepository(Alert) private readonly db: Repository<Alert>,
+    private readonly orgScope: OrganizationScopeService,
+  ) {}
   private admin(user: AuthenticatedUser) { if (user.role !== 'ADMIN') throw new ForbiddenException(); }
 
   private candidateQuery(category: string) {
@@ -119,6 +123,7 @@ export class AssuranceService {
     this.admin(user);
     const minutes=Math.min(480,Math.max(5,Number(body.ttlMinutes ?? 60)));
     if (!body.userId || !body.permission?.trim() || !body.reason?.trim()) throw new BadRequestException();
+    if (body.incidentId) await this.orgScope.assertIncident(user, body.incidentId);
     return (await this.db.query(`INSERT INTO temporary_access_grants(user_id,incident_id,permission,reason,granted_by,expires_at) VALUES($1,$2,$3,$4,$5,now()+($6::text||' minutes')::interval) RETURNING grant_id AS "grantId",expires_at AS "expiresAt"`,[body.userId,body.incidentId ?? null,body.permission.trim(),body.reason.trim(),user.userId,minutes]))[0];
   }
 
@@ -131,6 +136,7 @@ export class AssuranceService {
 
   async offlineAsset(user: AuthenticatedUser, body: any) {
     if (!body.assetId || !body.mediaType || !/^[a-f0-9]{64}$/i.test(body.contentHash ?? '') || Number(body.byteSize) <= 0) throw new BadRequestException();
+    if (body.incidentId) await this.orgScope.assertIncident(user, body.incidentId);
     const priority = Math.min(9,Math.max(1,Number(body.priority ?? 5)));
     return (await this.db.query(`INSERT INTO offline_asset_manifests(asset_id,user_id,incident_id,media_type,byte_size,content_hash,encryption,priority) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(asset_id) DO UPDATE SET priority=LEAST(offline_asset_manifests.priority,EXCLUDED.priority) RETURNING asset_id AS "assetId",status,priority`, [body.assetId,user.userId,body.incidentId ?? null,body.mediaType,body.byteSize,body.contentHash.toLowerCase(),body.encryption ?? 'AES-GCM',priority]))[0];
   }
