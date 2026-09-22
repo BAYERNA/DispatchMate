@@ -71,6 +71,37 @@ class OrganizationMigrationContainerTest {
         .hasMessageContaining("uq_users_org_badge");
   }
 
+  // V18: federation_agencies도 조직별로 나뉜다 — 서로 다른 조직이 같은 agency_code를 각자
+  // 등록해도(신뢰 파트너 기관 목록이 조직마다 다를 수 있으므로) 서로의 인증서 지문을
+  // 덮어쓰지 않아야 한다.
+  @Test
+  void 서로_다른_조직은_같은_federation_agency_code를_각자_쓸_수_있다() {
+    UUID orgA = insertOrganization("ORG-D", "테스트조직D");
+    UUID orgB = insertOrganization("ORG-E", "테스트조직E");
+
+    insertFederationAgency(orgA, "PARTNER-01", "인접소방서A용");
+    insertFederationAgency(orgB, "PARTNER-01", "인접소방서B용");
+
+    Integer count = jdbcTemplate.queryForObject(
+        "SELECT count(*) FROM federation_agencies WHERE agency_code = 'PARTNER-01'", Integer.class);
+    assertThat(count).isEqualTo(2);
+  }
+
+  @Test
+  void 같은_조직_안에서는_federation_agency_code가_여전히_유일하다() {
+    UUID org = insertOrganization("ORG-F", "테스트조직F");
+    insertFederationAgency(org, "PARTNER-02", "1차 등록");
+
+    assertThatThrownBy(() -> insertFederationAgency(org, "PARTNER-02", "2차 등록"))
+        .hasMessageContaining("uq_federation_agencies_org_code");
+  }
+
+  private void insertFederationAgency(UUID organizationId, String agencyCode, String name) {
+    jdbcTemplate.update(
+        "INSERT INTO federation_agencies(organization_id, agency_code, name) VALUES (?, ?, ?)",
+        organizationId, agencyCode, name);
+  }
+
   private UUID insertOrganization(String code, String name) {
     UUID id = UUID.randomUUID();
     jdbcTemplate.update(
