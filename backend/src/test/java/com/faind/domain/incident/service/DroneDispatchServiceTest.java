@@ -1,6 +1,9 @@
 package com.faind.domain.incident.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.faind.domain.device.service.DeviceService;
@@ -93,5 +96,20 @@ class DroneDispatchServiceTest {
         .thenReturn(Optional.of(incident(ORG_B, LocalDateTime.now().minusMinutes(5))));
 
     assertThat(service.averageDroneArrivalSeconds(ORG_A)).isEmpty();
+  }
+
+  // 선제적 드론 배정(CCTV 감지 시점) + confirm() 시점의 기존 IncidentCreatedEvent가 같은
+  // incidentId로 autoDispatch()를 두 번 트리거할 수 있다 — 두 번째 호출은 조용히 건너뛰어야 한다.
+  @Test
+  void 이미_드론이_배정된_사건은_다시_자동배정하지_않는다() {
+    UUID incidentId = UUID.randomUUID();
+    when(droneDispatchRepository.findByIncidentIdOrderByDispatchedAtDesc(incidentId))
+        .thenReturn(List.of(new DroneDispatch(incidentId, UUID.randomUUID())));
+
+    var result = service.autoDispatch(incidentId);
+
+    assertThat(result).isEmpty();
+    verify(deviceService, never()).findNearestAvailableDrone(any(), any(), any());
+    verify(incidentRepository, never()).findById(any());
   }
 }

@@ -52,6 +52,14 @@ public class DroneDispatchService {
   // REQUIRES_NEW: IncidentCreatedListener(AFTER_COMMIT)에서 호출 — 이유는 IncidentService.savePreAnalysisResult 주석 참조.
   @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
   public Optional<DroneDispatchResponse> autoDispatch(UUID incidentId) {
+    // 멱등성 가드: CCTV로 감지된 사건은 CctvSuspectedDetectedEvent(AI_SUSPECTED, 선제적 정찰)에서
+    // 한 번, 관리자가 confirm()할 때 IncidentCreatedEvent에서 또 한 번 — 이 메서드가 같은
+    // incidentId로 두 번 호출될 수 있다. 이미 배정 이력이 있으면 드론을 중복으로 띄우지 않는다.
+    if (!droneDispatchRepository.findByIncidentIdOrderByDispatchedAtDesc(incidentId).isEmpty()) {
+      log.info("이미 드론이 배정된 사건이라 FR-25 자동배정을 건너뜁니다 (incidentId={})", incidentId);
+      return Optional.empty();
+    }
+
     Incident incident = incidentRepository.findById(incidentId)
         .orElseThrow(() -> new BusinessException(ErrorCode.INCIDENT_NOT_FOUND));
 
