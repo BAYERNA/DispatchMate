@@ -48,6 +48,17 @@ export interface OrganizationResponse {
   createdAt: string
 }
 
+// 비행 전 규제 체크: organizations와 무관한 공유 참조 데이터(no_fly_zones)의 화면 표현.
+export interface NoFlyZoneResponse {
+  zoneId: string
+  zoneName: string
+  zoneType: string
+  centerLatitude: number
+  centerLongitude: number
+  radiusKm: number
+  active: boolean
+}
+
 export type DeviceType = 'BODYCAM' | 'SMARTPHONE' | 'DIGITAL_MASK' | 'SENSOR' | 'CCTV' | 'DRONE'
 
 export interface DeviceResponse {

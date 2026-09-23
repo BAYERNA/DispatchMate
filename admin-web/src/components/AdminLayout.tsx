@@ -16,7 +16,10 @@ const NAV_ITEMS = [
 
 // 조직 온보딩(6번): SUPER_ADMIN은 개별 조직의 관리자 콘솔(ADM-*)에 들어갈 수 없고
 // 조직 관리 화면만 사용하므로 별도의 축소된 내비게이션을 쓴다.
-const SUPER_ADMIN_NAV_ITEMS = [{ to: '/organizations', label: '조직 관리', end: true }]
+const SUPER_ADMIN_NAV_ITEMS = [
+  { to: '/organizations', label: '조직 관리', end: true },
+  { to: '/no-fly-zones', label: '비행금지구역 관리' },
+]
 
 export function AdminLayout({ children, title, screenId }: { children: ReactNode; title: string; screenId: string }) {
   const { user, logout } = useAuth()
