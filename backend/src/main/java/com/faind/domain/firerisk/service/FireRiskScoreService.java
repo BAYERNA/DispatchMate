@@ -43,6 +43,11 @@ public class FireRiskScoreService {
       // 나눗셈이 불가능하다).
       throw new BusinessException(ErrorCode.INVALID_INPUT, "위험도를 계량화하려면 최소 2개 지역의 데이터가 필요합니다.");
     }
+    // 코드 리뷰 finding: 비율 필드가 비어 있으면 아래 mapToDouble()의 doubleValue() 호출에서
+    // 곧바로 NPE가 나 500으로 새어나갔다 — 다른 입력 검증과 같은 방식으로 먼저 걸러낸다.
+    if (inputs.stream().anyMatch(FireRiskScoreService::hasMissingField)) {
+      throw new BusinessException(ErrorCode.INVALID_INPUT, "지역코드·지역명·화재 위험도 비율 지표는 모두 채워야 합니다.");
+    }
 
     double[] fireCounts = inputs.stream().mapToDouble(FireRiskRegionInput::fireCount5y).toArray();
     double[] responseTimes = inputs.stream().mapToDouble(FireRiskRegionInput::responseTimeP90Seconds).toArray();
@@ -99,6 +104,16 @@ public class FireRiskScoreService {
     if (score >= 66.7) return "상";
     if (score >= 33.3) return "중";
     return "하";
+  }
+
+  private static boolean hasMissingField(FireRiskRegionInput input) {
+    return input.regionCode() == null
+        || input.regionCode().isBlank()
+        || input.regionName() == null
+        || input.regionName().isBlank()
+        || input.nightFireRatio() == null
+        || input.highRiskStructureRatio() == null
+        || input.negligenceFireRatio() == null;
   }
 
   private List<FireRiskRegionResponse> toRankedResponses(List<FireRiskRegion> regions) {

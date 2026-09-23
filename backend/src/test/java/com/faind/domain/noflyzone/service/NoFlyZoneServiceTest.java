@@ -67,4 +67,20 @@ class NoFlyZoneServiceTest {
 
     assertThatThrownBy(() -> service.register(request)).isInstanceOf(BusinessException.class);
   }
+
+  // 코드 리뷰 finding: 구역명·유형이 비어 있으면 zone_name/zone_type NOT NULL 제약을 그대로
+  // 때려 원시 DB 예외로 샜다.
+  @Test
+  void 구역명이_없으면_등록할_수_없다() {
+    var request = new NoFlyZoneRequest(" ", "DEMO", BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0), BigDecimal.ONE);
+
+    assertThatThrownBy(() -> service.register(request)).isInstanceOf(BusinessException.class);
+  }
+
+  @Test
+  void 구역_유형이_없으면_등록할_수_없다() {
+    var request = new NoFlyZoneRequest("구역", null, BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0), BigDecimal.ONE);
+
+    assertThatThrownBy(() -> service.register(request)).isInstanceOf(BusinessException.class);
+  }
 }

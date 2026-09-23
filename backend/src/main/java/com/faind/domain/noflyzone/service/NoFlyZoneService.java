@@ -31,6 +31,14 @@ public class NoFlyZoneService {
 
   @Transactional
   public NoFlyZoneResponse register(NoFlyZoneRequest request) {
+    // 코드 리뷰 finding: 구역명·유형이 비어 있으면 이 검증을 통과해 zone_name/zone_type의
+    // NOT NULL 제약을 그대로 때려서 원시 DataIntegrityViolationException(500)으로 샜다.
+    if (request.zoneName() == null || request.zoneName().isBlank()) {
+      throw new BusinessException(ErrorCode.INVALID_INPUT, "구역명이 필요합니다.");
+    }
+    if (request.zoneType() == null || request.zoneType().isBlank()) {
+      throw new BusinessException(ErrorCode.INVALID_INPUT, "구역 유형이 필요합니다.");
+    }
     if (request.centerLatitude() == null || request.centerLongitude() == null) {
       throw new BusinessException(ErrorCode.INVALID_INPUT, "구역 중심 좌표가 필요합니다.");
     }

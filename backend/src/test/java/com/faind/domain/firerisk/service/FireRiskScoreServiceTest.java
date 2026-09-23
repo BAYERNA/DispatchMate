@@ -47,6 +47,18 @@ class FireRiskScoreServiceTest {
         .satisfies(e -> assertThat(((BusinessException) e).getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
   }
 
+  // 코드 리뷰 finding: 비율 필드가 비어 있으면 mapToDouble()에서 곧바로 NPE가 났다.
+  @Test
+  void 비율_지표가_비어있으면_예외를_던진다() {
+    FireRiskRegionInput a = input("A", 10, 300, 1, "20", "10", "30");
+    FireRiskRegionInput missing = new FireRiskRegionInput(
+        "B", "B_name", 10, 300, 1, null, new BigDecimal("10"), new BigDecimal("30"));
+
+    assertThatThrownBy(() -> service.recompute(List.of(a, missing)))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(e -> assertThat(((BusinessException) e).getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+  }
+
   @Test
   void 모든_지표가_더_나쁜_지역이_더_높은_점수와_1위를_받는다() {
     when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));

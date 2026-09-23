@@ -223,6 +223,9 @@ class DroneDispatchServiceTest {
 
     assertThat(result).isPresent();
     assertThat(incident.getDroneDispatchSkipReason()).isNull();
+    // 코드 리뷰 finding: 커밋 시점까지 INSERT를 미루면 유니크 제약 위반이 "배정 완료" 로그·경로
+    // 계산이 끝난 뒤에야 드러난다 — saveAndFlush()로 즉시 실행해야 한다.
+    verify(droneDispatchRepository).saveAndFlush(any());
   }
 
   // Firefly GCS 라이트 지도 뷰
@@ -249,6 +252,9 @@ class DroneDispatchServiceTest {
     var result = service.listActiveDispatches(ORG_A);
 
     assertThat(result).isEmpty();
+    // 코드 리뷰 finding: 조직 필터링 전에 드론 위치를 조회하면 다른 조직의 드론 좌표까지
+    // 불필요하게 읽게 된다 — 걸러진 뒤 빈 id 목록으로 호출됐는지 검증한다.
+    verify(deviceService).findDroneLocations(List.of());
   }
 
   @Test

@@ -132,7 +132,16 @@ public class DroneDispatchService {
     // 배정됐으니 화면에 낡은 사유가 남지 않도록 지운다.
     incident.clearDroneDispatchSkip();
     DroneDispatch dispatch = new DroneDispatch(incidentId, drone.droneId());
-    droneDispatchRepository.save(dispatch);
+    // 코드 리뷰 finding: 메서드 맨 위의 멱등성 가드는 조회 후 판단(check-then-act)이라 원자적이지
+    // 않다 — CctvSuspectedDetectedEvent와 IncidentCreatedEvent가 거의 동시에 이 메서드를 각자
+    // REQUIRES_NEW로 호출하면 둘 다 "배정 이력 없음"을 보고 통과해 드론이 두 대 뜰 수 있다.
+    // drone_dispatches(incident_id)의 DB 유니크 제약(V25)이 최종 방어선이다 — saveAndFlush()로
+    // 즉시 INSERT를 실행해 경합에서 진 트랜잭션이 이 시점에 바로 실패하게 한다(끝까지 미루면 커밋
+    // 시점에야 실패해 "배정 완료" 로그·경로 계산까지 헛돈다). 실패하면 REQUIRES_NEW 트랜잭션 전체가
+    // 롤백되어 claimDroneForDispatch()로 선점했던 드론도 함께 NORMAL로 되돌아간다 — 별도 보정 로직이
+    // 필요 없다. 호출부(IncidentCreatedListener/CctvSuspectedDroneReconListener)는 이미 이 메서드를
+    // try/catch로 감싸고 있어 예외가 밖으로 새지 않는다.
+    droneDispatchRepository.saveAndFlush(dispatch);
 
     RouteEstimateResponse route = routingApiClient.estimateDroneRoute(
         incidentId.toString(), drone.latitude(), drone.longitude(), incident.getLatitude(), incident.getLongitude(),
@@ -209,11 +218,15 @@ public class DroneDispatchService {
         .filter(incident -> incident.getOrganizationId().equals(organizationId))
         .collect(Collectors.toMap(Incident::getIncidentId, incident -> incident));
 
+    // 조직 필터링 전에 드론 위치를 조회하면 다른 조직의 드론 좌표까지 불필요하게 읽게 된다 —
+    // 응답엔 안 나가더라도 멀티테넌시 원칙(다른 조직 데이터는 애초에 조회하지 않는다)에 어긋나므로
+    // 먼저 이 조직 소속 출동만 추려낸 뒤 그 드론들만 조회한다.
+    List<DroneDispatch> inOrgDispatches =
+        active.stream().filter(dispatch -> incidentsInOrg.containsKey(dispatch.getIncidentId())).toList();
     Map<UUID, DroneLocationResponse> drones =
-        deviceService.findDroneLocations(active.stream().map(DroneDispatch::getDroneId).distinct().toList());
+        deviceService.findDroneLocations(inOrgDispatches.stream().map(DroneDispatch::getDroneId).distinct().toList());
 
-    return active.stream()
-        .filter(dispatch -> incidentsInOrg.containsKey(dispatch.getIncidentId()))
+    return inOrgDispatches.stream()
         .map(dispatch -> toActiveDispatchResponse(dispatch, incidentsInOrg.get(dispatch.getIncidentId()), drones))
         .toList();
   }
