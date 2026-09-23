@@ -36,8 +36,9 @@ public class AccountService {
     this.temporaryPasswordGenerator = temporaryPasswordGenerator;
   }
 
-  public Page<AccountResponse> list(UUID organizationId, String keyword, String role, Pageable pageable) {
-    return userRepository.findAll(UserSpecifications.search(organizationId, keyword, role), pageable)
+  public Page<AccountResponse> list(
+      UUID organizationId, String keyword, String role, boolean includeInactive, Pageable pageable) {
+    return userRepository.findAll(UserSpecifications.search(organizationId, keyword, role, includeInactive), pageable)
         .map(AccountResponse::from);
   }
 
@@ -51,7 +52,7 @@ public class AccountService {
     if (keyword == null || keyword.isBlank()) {
       return List.of();
     }
-    return userRepository.findAll(UserSpecifications.search(organizationId, keyword, "ALL")).stream()
+    return userRepository.findAll(UserSpecifications.search(organizationId, keyword, "ALL", false)).stream()
         .map(User::getUserId)
         .toList();
   }
@@ -95,6 +96,13 @@ public class AccountService {
   @Transactional
   public void deactivate(UUID organizationId, UUID userId) {
     findUser(organizationId, userId).deactivate();
+  }
+
+  // 전체 프로세스 점검 중 발견: 비활성화는 있는데 되돌릴 방법이 없어, 잘못 비활성화하면 그 사번을
+  // 영영 못 쓰게 되는 결함이었다(사번 유일 제약은 상태와 무관하게 걸려 있음).
+  @Transactional
+  public void reactivate(UUID organizationId, UUID userId) {
+    findUser(organizationId, userId).activate();
   }
 
   // device 패키지가 매핑대원 이름·소속팀을 응답 DTO에 채울 때 사용 (Device 엔티티 직접 접근 없이 호출).

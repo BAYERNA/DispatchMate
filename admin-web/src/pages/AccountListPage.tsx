@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { AdminLayout } from '../components/AdminLayout'
 import { Banner } from '../components/Banner'
 import { ApiError } from '../api/client'
-import { deactivateAccount, listAccounts, reissuePassword } from '../api/accounts'
+import { deactivateAccount, listAccounts, reactivateAccount, reissuePassword } from '../api/accounts'
 import type { Role } from '../types'
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -30,7 +30,7 @@ export function AccountListPage() {
 
   const query = useQuery({
     queryKey: ['accounts', keyword, role, page],
-    queryFn: () => listAccounts({ keyword, role, page, size: PAGE_SIZE }),
+    queryFn: () => listAccounts({ keyword, role, page, size: PAGE_SIZE, includeInactive: true }),
   })
 
   // 계정이 50명을 넘으면 뒤쪽 계정이 목록에서 아예 안 보이던 결함 — 검색/필터를 바꾸면
@@ -65,6 +65,16 @@ export function AccountListPage() {
       setActionError(err instanceof ApiError ? err.message : '비활성화에 실패했습니다.')
       setDeactivateTargetId(null)
     },
+  })
+
+  // 비활성화의 짝 — 예전엔 이 버튼이 없어서 잘못 비활성화한 계정을 되돌릴 방법이 없었다.
+  const reactivateMutation = useMutation({
+    mutationFn: (userId: string) => reactivateAccount(userId),
+    onSuccess: () => {
+      setActionError(null)
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+    },
+    onError: (err) => setActionError(err instanceof ApiError ? err.message : '재활성화에 실패했습니다.'),
   })
 
   return (
@@ -174,6 +184,16 @@ export function AccountListPage() {
                             </button>
                           )}
                         </>
+                      )}
+                      {account.status !== 'ACTIVE' && (
+                        <button
+                          type="button"
+                          className="wf-btn primary small"
+                          disabled={reactivateMutation.isPending}
+                          onClick={() => reactivateMutation.mutate(account.userId)}
+                        >
+                          재활성화
+                        </button>
                       )}
                     </td>
                   </tr>

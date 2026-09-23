@@ -82,6 +82,29 @@ class AccountServiceTest {
   }
 
   @Test
+  void 다른_조직의_계정은_재활성화할_수_없다() {
+    UUID userId = UUID.randomUUID();
+    when(userRepository.findById(userId)).thenReturn(Optional.of(userInOrgB(userId)));
+
+    assertThatThrownBy(() -> accountService.reactivate(ORG_A, userId))
+        .isInstanceOf(BusinessException.class);
+  }
+
+  // 전체 프로세스 점검 중 발견: 비활성화는 있는데 되돌릴 방법이 없던 결함의 재발 방지.
+  @Test
+  void 같은_조직의_비활성_계정은_재활성화하면_다시_활성_상태가_된다() {
+    UUID userId = UUID.randomUUID();
+    User user = new User(ORG_A, "홍길동", "RESPONDER", "B0001", "1팀", "010-0000-0000", "hash");
+    org.springframework.test.util.ReflectionTestUtils.setField(user, "userId", userId);
+    user.deactivate();
+    when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+    accountService.reactivate(ORG_A, userId);
+
+    assertThat(accountService.getAccount(ORG_A, userId).status()).isEqualTo("ACTIVE");
+  }
+
+  @Test
   void 같은_조직의_계정은_정상_조회된다() {
     UUID userId = UUID.randomUUID();
     User user = new User(ORG_A, "홍길동", "RESPONDER", "B0001", "1팀", "010-0000-0000", "hash");

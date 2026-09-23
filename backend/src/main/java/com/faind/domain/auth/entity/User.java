@@ -104,6 +104,13 @@ public class User {
     this.updatedAt = LocalDateTime.now();
   }
 
+  // deactivate()와 짝을 이루는 되돌리기 — 세션 무효화(tokenVersion 증가)는 비활성화 시점에
+  // 이미 끝났으므로 다시 건드릴 필요 없다.
+  public void activate() {
+    this.status = "ACTIVE";
+    this.updatedAt = LocalDateTime.now();
+  }
+
   public boolean isAdmin() {
     return "ADMIN".equals(role);
   }
