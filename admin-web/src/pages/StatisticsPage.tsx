@@ -2,7 +2,14 @@ import { useQuery } from '@tanstack/react-query'
 import { AdminLayout } from '../components/AdminLayout'
 import { StatCard } from '../components/StatCard'
 import { BarChart } from '../components/BarChart'
-import { getAiFeedbackStats, getStatisticsSummary } from '../api/statistics'
+import { getAiFeedbackStats, getFireRiskRegions, getStatisticsSummary } from '../api/statistics'
+import type { FireRiskRegion } from '../api/statistics'
+
+const RISK_GRADE_COLOR: Record<FireRiskRegion['riskGrade'], string> = {
+  상: 'var(--color-alert)',
+  중: 'var(--color-drone)',
+  하: 'var(--color-success)',
+}
 
 function formatSeconds(seconds: number | null): string {
   if (seconds == null) return '—'
@@ -23,7 +30,9 @@ const JUDGMENT_TYPE_LABEL: Record<string, string> = {
 export function StatisticsPage() {
   const query = useQuery({ queryKey: ['statistics-summary'], queryFn: getStatisticsSummary })
   const feedbackQuery = useQuery({ queryKey: ['ai-feedback-stats'], queryFn: getAiFeedbackStats })
+  const fireRiskQuery = useQuery({ queryKey: ['fire-risk-regions'], queryFn: getFireRiskRegions })
   const data = query.data
+  const topRiskRegions = (fireRiskQuery.data ?? []).slice(0, 5)
 
   return (
     <AdminLayout screenId="ADM-009" title="기관 통계 대시보드">
@@ -76,6 +85,50 @@ export function StatisticsPage() {
                 <span className="label">평균 위험도 점수</span>
                 {data.averageCctvDangerScore != null ? `${data.averageCctvDangerScore}점` : '감지 이력 없음'}
               </div>
+            </div>
+          </div>
+
+          <div className="wf" style={{ marginBottom: 14 }}>
+            <div className="wf-header">
+              <span>위험지역 Top 5 (Fire Risk Score)</span>
+            </div>
+            <div className="wf-body">
+              {fireRiskQuery.isLoading && <div className="spinner-text">불러오는 중…</div>}
+              {fireRiskQuery.isError && <div className="banner error">위험지역 데이터를 불러오지 못했습니다.</div>}
+              {fireRiskQuery.data && (
+                <table className="wf-table">
+                  <thead>
+                    <tr>
+                      <th>순위</th>
+                      <th>지역</th>
+                      <th>위험도 점수</th>
+                      <th>등급</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topRiskRegions.map((region) => (
+                      <tr key={region.regionCode}>
+                        <td>{region.rank}</td>
+                        <td>{region.regionName}</td>
+                        <td>{region.riskScore}</td>
+                        <td>
+                          <span className="tag" style={{ color: RISK_GRADE_COLOR[region.riskGrade] }}>
+                            {region.riskGrade}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                    {topRiskRegions.length === 0 && (
+                      <tr>
+                        <td colSpan={4} style={{ textAlign: 'center' }}>
+                          아직 계산된 위험지역 데이터가 없습니다.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
+              <div className="alert-meta">소방청 화재이력 6개 지표를 정규화해 산출한 지역별 상대 위험도입니다 — 전국 절대 기준이 아니라 마지막으로 제출된 지역 묶음 내 상대 순위입니다.</div>
             </div>
           </div>
 
