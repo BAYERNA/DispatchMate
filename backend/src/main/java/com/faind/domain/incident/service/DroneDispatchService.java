@@ -12,6 +12,8 @@ import com.faind.domain.incident.repository.DroneDispatchRepository;
 import com.faind.domain.incident.repository.IncidentRepository;
 import com.faind.global.error.BusinessException;
 import com.faind.global.error.ErrorCode;
+import com.faind.integration.publicdata.PublicDataApiAdapter;
+import com.faind.integration.publicdata.WeatherSnapshot;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.List;
@@ -20,6 +22,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,18 +38,27 @@ public class DroneDispatchService {
   private final AiJudgmentLogRepository aiJudgmentLogRepository;
   private final DeviceService deviceService;
   private final RoutingApiClient routingApiClient;
+  private final PublicDataApiAdapter publicDataApiAdapter;
+  private final double maxWindSpeedMs;
+  private final double maxPrecipitationMm;
 
   public DroneDispatchService(
       IncidentRepository incidentRepository,
       DroneDispatchRepository droneDispatchRepository,
       AiJudgmentLogRepository aiJudgmentLogRepository,
       DeviceService deviceService,
-      RoutingApiClient routingApiClient) {
+      RoutingApiClient routingApiClient,
+      PublicDataApiAdapter publicDataApiAdapter,
+      @Value("${faind.drone.weather-safety.max-wind-speed-ms:10.0}") double maxWindSpeedMs,
+      @Value("${faind.drone.weather-safety.max-precipitation-mm:0.1}") double maxPrecipitationMm) {
     this.incidentRepository = incidentRepository;
     this.droneDispatchRepository = droneDispatchRepository;
     this.aiJudgmentLogRepository = aiJudgmentLogRepository;
     this.deviceService = deviceService;
     this.routingApiClient = routingApiClient;
+    this.publicDataApiAdapter = publicDataApiAdapter;
+    this.maxWindSpeedMs = maxWindSpeedMs;
+    this.maxPrecipitationMm = maxPrecipitationMm;
   }
 
   // REQUIRES_NEW: IncidentCreatedListener(AFTER_COMMIT)에서 호출 — 이유는 IncidentService.savePreAnalysisResult 주석 참조.
@@ -62,6 +74,19 @@ public class DroneDispatchService {
 
     Incident incident = incidentRepository.findById(incidentId)
         .orElseThrow(() -> new BusinessException(ErrorCode.INCIDENT_NOT_FOUND));
+
+    // FAIND 사업계획서 비행 전 안전 게이트: 기상 조건이 안전 기준을 벗어나면 다른 조건을 다
+    // 충족해도 출동을 보류한다. 관측 자체를 못 가져온 경우(서비스키 미설정, API 실패 등)는
+    // "위험하다고 판단할 근거가 없다"로 보고 배정을 막지 않는다 — 이 게이트는 핵심 배차 로직의
+    // 가용성을 해치면 안 되는 부가 안전장치이기 때문이다.
+    Optional<WeatherSnapshot> weather =
+        publicDataApiAdapter.fetchCurrentWeather(incident.getLatitude(), incident.getLongitude());
+    if (weather.isPresent() && isUnsafeToFly(weather.get())) {
+      log.info(
+          "기상 조건이 비행 안전 기준을 벗어나 FR-25 자동배정을 보류합니다 (incidentId={}, windSpeedMs={}, precipitationMm={})",
+          incidentId, weather.get().windSpeedMs(), weather.get().precipitationMm());
+      return Optional.empty();
+    }
 
     Optional<NearestDroneResponse> nearestDrone = deviceService.findNearestAvailableDrone(
         incident.getOrganizationId(), incident.getLatitude(), incident.getLongitude());
@@ -88,6 +113,10 @@ public class DroneDispatchService {
         incidentId, drone.droneId(), route.distanceKm(), route.etaSeconds());
 
     return Optional.of(DroneDispatchResponse.from(dispatch));
+  }
+
+  private boolean isUnsafeToFly(WeatherSnapshot weather) {
+    return weather.windSpeedMs() > maxWindSpeedMs || weather.precipitationMm() > maxPrecipitationMm;
   }
 
   // FR-26: 드론 도착 후 정찰 영상을 AI가 분석한 결과를 CMD-002에 표시하기 위해 기록.

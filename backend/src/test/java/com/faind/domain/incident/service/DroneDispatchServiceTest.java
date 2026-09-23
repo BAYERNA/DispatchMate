@@ -6,6 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.faind.domain.device.dto.NearestDroneResponse;
 import com.faind.domain.device.service.DeviceService;
 import com.faind.domain.incident.entity.DroneDispatch;
 import com.faind.domain.incident.entity.Incident;
@@ -13,6 +14,9 @@ import com.faind.domain.incident.entity.IncidentType;
 import com.faind.domain.incident.repository.AiJudgmentLogRepository;
 import com.faind.domain.incident.repository.DroneDispatchRepository;
 import com.faind.domain.incident.repository.IncidentRepository;
+import com.faind.integration.publicdata.PublicDataApiAdapter;
+import com.faind.integration.publicdata.WeatherSnapshot;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -36,18 +40,26 @@ class DroneDispatchServiceTest {
   @Mock private AiJudgmentLogRepository aiJudgmentLogRepository;
   @Mock private DeviceService deviceService;
   @Mock private RoutingApiClient routingApiClient;
+  @Mock private PublicDataApiAdapter publicDataApiAdapter;
 
   private DroneDispatchService service;
 
   @BeforeEach
   void setUp() {
-    service =
-        new DroneDispatchService(incidentRepository, droneDispatchRepository, aiJudgmentLogRepository, deviceService, routingApiClient);
+    service = new DroneDispatchService(
+        incidentRepository, droneDispatchRepository, aiJudgmentLogRepository, deviceService, routingApiClient,
+        publicDataApiAdapter, 10.0, 0.1);
   }
 
   private Incident incident(UUID organizationId, LocalDateTime reportedAt) {
     return Incident.manualReport(
         organizationId, "2026-0001", IncidentType.FIRE, "주소", null, null, reportedAt, UUID.randomUUID());
+  }
+
+  private Incident incidentWithCoordinates(UUID organizationId) {
+    return Incident.manualReport(
+        organizationId, "2026-0002", IncidentType.FIRE, "주소", new BigDecimal("37.5"), new BigDecimal("127.0"),
+        LocalDateTime.now(), UUID.randomUUID());
   }
 
   private DroneDispatch arrivedDispatch(UUID incidentId) {
@@ -111,5 +123,54 @@ class DroneDispatchServiceTest {
     assertThat(result).isEmpty();
     verify(deviceService, never()).findNearestAvailableDrone(any(), any(), any());
     verify(incidentRepository, never()).findById(any());
+  }
+
+  // FAIND 사업계획서 비행 전 안전 게이트: "기상 조건이 안전 기준을 벗어나면 다른 조건을 다
+  // 충족해도 출동을 보류한다."
+  @Test
+  void 풍속이_안전기준을_벗어나면_드론을_배정하지_않는다() {
+    UUID incidentId = UUID.randomUUID();
+    Incident incident = incidentWithCoordinates(ORG_A);
+    when(droneDispatchRepository.findByIncidentIdOrderByDispatchedAtDesc(incidentId)).thenReturn(List.of());
+    when(incidentRepository.findById(incidentId)).thenReturn(Optional.of(incident));
+    when(publicDataApiAdapter.fetchCurrentWeather(incident.getLatitude(), incident.getLongitude()))
+        .thenReturn(Optional.of(new WeatherSnapshot(15.0, 0.0)));
+
+    var result = service.autoDispatch(incidentId);
+
+    assertThat(result).isEmpty();
+    verify(deviceService, never()).findNearestAvailableDrone(any(), any(), any());
+  }
+
+  @Test
+  void 강수량이_안전기준을_벗어나면_드론을_배정하지_않는다() {
+    UUID incidentId = UUID.randomUUID();
+    Incident incident = incidentWithCoordinates(ORG_A);
+    when(droneDispatchRepository.findByIncidentIdOrderByDispatchedAtDesc(incidentId)).thenReturn(List.of());
+    when(incidentRepository.findById(incidentId)).thenReturn(Optional.of(incident));
+    when(publicDataApiAdapter.fetchCurrentWeather(incident.getLatitude(), incident.getLongitude()))
+        .thenReturn(Optional.of(new WeatherSnapshot(2.0, 3.0)));
+
+    var result = service.autoDispatch(incidentId);
+
+    assertThat(result).isEmpty();
+    verify(deviceService, never()).findNearestAvailableDrone(any(), any(), any());
+  }
+
+  // 기상 게이트는 핵심 배차 로직의 가용성을 해치면 안 되는 부가 안전장치다 — 관측을 못 가져와도
+  // 배정 자체는 계속 진행돼야 한다(이후 단계에서 다른 이유로 막힐 수는 있다).
+  @Test
+  void 기상_관측을_가져올_수_없으면_배정을_막지_않는다() {
+    UUID incidentId = UUID.randomUUID();
+    Incident incident = incidentWithCoordinates(ORG_A);
+    when(droneDispatchRepository.findByIncidentIdOrderByDispatchedAtDesc(incidentId)).thenReturn(List.of());
+    when(incidentRepository.findById(incidentId)).thenReturn(Optional.of(incident));
+    when(publicDataApiAdapter.fetchCurrentWeather(incident.getLatitude(), incident.getLongitude()))
+        .thenReturn(Optional.empty());
+    when(deviceService.findNearestAvailableDrone(any(), any(), any())).thenReturn(Optional.<NearestDroneResponse>empty());
+
+    service.autoDispatch(incidentId);
+
+    verify(deviceService).findNearestAvailableDrone(any(), any(), any());
   }
 }
