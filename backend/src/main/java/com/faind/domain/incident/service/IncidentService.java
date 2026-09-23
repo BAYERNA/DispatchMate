@@ -89,8 +89,9 @@ public class IncidentService {
   }
 
   @Transactional
-  public IncidentResponse create(IncidentCreateRequest request) {
+  public IncidentResponse create(UUID organizationId, IncidentCreateRequest request) {
     Incident incident = Incident.manualReport(
+        organizationId,
         incidentNumberGenerator.next(),
         parseIncidentType(request.incidentType()),
         request.address(),
@@ -115,20 +116,26 @@ public class IncidentService {
     }
   }
 
+  public IncidentResponse getIncident(UUID organizationId, UUID incidentId) {
+    return IncidentResponse.from(findIncident(organizationId, incidentId));
+  }
+
+  // IncidentCreatedListener처럼 로그인 사용자가 없는 내부(커밋 후) 호출 경로 전용 — 같은 프로세스가
+  // 방금 생성한 incidentId를 바로 다시 읽는 것이라 조직 스코프 검증이 필요 없다.
   public IncidentResponse getIncident(UUID incidentId) {
     return IncidentResponse.from(findIncident(incidentId));
   }
 
-  public PreAnalysisResponse getPreAnalysis(UUID incidentId) {
-    Incident incident = findIncident(incidentId);
+  public PreAnalysisResponse getPreAnalysis(UUID organizationId, UUID incidentId) {
+    Incident incident = findIncident(organizationId, incidentId);
     PreAnalysisResult result = preAnalysisResultRepository.findByIncidentId(incidentId)
         .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "아직 사전분석 결과가 없습니다."));
     return PreAnalysisResponse.from(result, incident.getReportedAt());
   }
 
   @Transactional
-  public AssignmentResponse assign(UUID incidentId, AssignmentRequest request) {
-    findIncident(incidentId); // 존재 검증
+  public AssignmentResponse assign(UUID organizationId, UUID incidentId, AssignmentRequest request) {
+    findIncident(organizationId, incidentId); // 존재 + 조직 검증
     boolean isFirstAssignmentOfIncident = !assignmentRepository.existsByIncidentId(incidentId);
 
     IncidentAssignment assignment = new IncidentAssignment(incidentId, request.userId(), request.roleInIncident());
@@ -144,7 +151,8 @@ public class IncidentService {
 
   // FR-19: 지휘관이 CMD-002에서 통신 담당을 재지정.
   @Transactional
-  public AssignmentResponse reassignCommsLead(UUID incidentId, UUID newCommsLeadUserId) {
+  public AssignmentResponse reassignCommsLead(UUID organizationId, UUID incidentId, UUID newCommsLeadUserId) {
+    findIncident(organizationId, incidentId); // 존재 + 조직 검증
     assignmentRepository.findByIncidentIdAndCommsLeadTrue(incidentId).ifPresent(prev -> prev.setCommsLead(false));
     IncidentAssignment next = assignmentRepository.findByIncidentIdAndUserId(incidentId, newCommsLeadUserId)
         .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT, "해당 출동에 배정되지 않은 대원입니다."));
@@ -165,11 +173,12 @@ public class IncidentService {
   }
 
   @Transactional
-  public void recordResponderStatus(UUID incidentId, ResponderStatusRequest request, UUID currentUserId) {
+  public void recordResponderStatus(
+      UUID organizationId, UUID incidentId, ResponderStatusRequest request, UUID currentUserId) {
     if (!request.userId().equals(currentUserId)) {
       throw new BusinessException(ErrorCode.FORBIDDEN, "본인 명의로만 상태를 보고할 수 있습니다.");
     }
-    Incident incident = findIncident(incidentId);
+    Incident incident = findIncident(organizationId, incidentId);
     // 현장 대원의 상태 보고가 처음 들어온 시점 = 실제로 현장 활동이 시작됐다고 볼 수 있는 가장
     // 이른 신호. DISPATCHED("출동중")에서 IN_PROGRESS("진행중")로 이때 전환한다 — 이 전환을 트리거할
     // 다른 이벤트(예: 도착 확인)가 아직 없으므로, 이미 IN_PROGRESS면 조용히 건너뛴다.
@@ -183,8 +192,8 @@ public class IncidentService {
   }
 
   // CMD-002 현장 모니터링 대시보드 전체 집계.
-  public MonitoringResponse getMonitoring(UUID incidentId) {
-    Incident incident = findIncident(incidentId);
+  public MonitoringResponse getMonitoring(UUID organizationId, UUID incidentId) {
+    Incident incident = findIncident(organizationId, incidentId);
     List<ResponderStatusResponse> responders = latestStatusPerResponder(incidentId);
     List<AssignmentResponse> assignments = assignmentRepository.findByIncidentIdOrderByAssignedAtAsc(incidentId).stream()
         .map(AssignmentResponse::from)
@@ -210,8 +219,8 @@ public class IncidentService {
   // FR-05, QA 최우선 재검증 대상. status=CLOSED 전환과 IncidentClosedEvent 발행을
   // 반드시 같은 트랜잭션 메서드 안에서 함께 수행해, "종료는 됐는데 알림/리포트가 안 생기는" 결함을 막는다.
   @Transactional
-  public IncidentResponse close(UUID incidentId) {
-    Incident incident = findIncident(incidentId);
+  public IncidentResponse close(UUID organizationId, UUID incidentId) {
+    Incident incident = findIncident(organizationId, incidentId);
     List<UUID> responderIds = getAssignedResponderIds(incidentId);
     incident.close();
     eventPublisher.publishEvent(new IncidentClosedEvent(incidentId, responderIds));
@@ -219,26 +228,29 @@ public class IncidentService {
   }
 
   // ADM-001 관리자 홈 (FR-09) 통계 카드. device/auth 패키지 접근은 각 서비스 인터페이스를 거친다.
-  public DashboardSummaryResponse getDashboardSummary() {
+  public DashboardSummaryResponse getDashboardSummary(UUID organizationId) {
     LocalDateTime startOfToday = LocalDateTime.now().toLocalDate().atStartOfDay();
-    long todayDispatchCount = incidentRepository.countByReportedAtAfter(startOfToday);
-    long inProgressCount = incidentRepository.countByStatus(com.faind.domain.incident.entity.IncidentStatus.IN_PROGRESS)
-        + incidentRepository.countByStatus(com.faind.domain.incident.entity.IncidentStatus.DISPATCHED);
-    long onDutyResponderCount = accountService.countActiveResponders();
-    long deviceAnomalyCount = deviceService.countAnomalies();
+    long todayDispatchCount = incidentRepository.countByOrganizationIdAndReportedAtAfter(organizationId, startOfToday);
+    long inProgressCount =
+        incidentRepository.countByOrganizationIdAndStatus(organizationId, com.faind.domain.incident.entity.IncidentStatus.IN_PROGRESS)
+            + incidentRepository.countByOrganizationIdAndStatus(organizationId, com.faind.domain.incident.entity.IncidentStatus.DISPATCHED);
+    long onDutyResponderCount = accountService.countActiveResponders(organizationId);
+    long deviceAnomalyCount = deviceService.countAnomalies(organizationId);
     return new DashboardSummaryResponse(todayDispatchCount, inProgressCount, onDutyResponderCount, deviceAnomalyCount);
   }
 
   // ADM-001 "최근 출동 목록"
-  public Page<IncidentListItemResponse> listRecent(Pageable pageable) {
-    return incidentRepository.findAllByOrderByReportedAtDesc(pageable)
+  public Page<IncidentListItemResponse> listRecent(UUID organizationId, Pageable pageable) {
+    return incidentRepository.findAllByOrganizationIdOrderByReportedAtDesc(organizationId, pageable)
         .map(incident -> IncidentListItemResponse.from(incident, assignmentRepository.countByIncidentId(incident.getIncidentId())));
   }
 
   // CMD-001 지휘관 태블릿 진입 화면. CCTV 출처 출동은 commanderId가 배정되지 않으므로
   // commander별 필터 대신 DISPATCHED/IN_PROGRESS 전체를 노출한다 (컨트롤러에서 COMMANDER/ADMIN 권한으로 제한).
-  public List<IncidentResponse> listActive() {
-    return incidentRepository.findByStatusInOrderByReportedAtDesc(List.of(IncidentStatus.DISPATCHED, IncidentStatus.IN_PROGRESS))
+  public List<IncidentResponse> listActive(UUID organizationId) {
+    return incidentRepository
+        .findByOrganizationIdAndStatusInOrderByReportedAtDesc(
+            organizationId, List.of(IncidentStatus.DISPATCHED, IncidentStatus.IN_PROGRESS))
         .stream()
         .map(IncidentResponse::from)
         .toList();
@@ -259,8 +271,8 @@ public class IncidentService {
   }
 
   // CMD-002 드론 정찰 카드(FR-26) 등에서 해당 출동에 얽힌 AI 판단 이력을 시간순으로 보여줄 때 사용.
-  public List<AiJudgmentSummaryResponse> getAiJudgments(UUID incidentId) {
-    findIncident(incidentId); // 존재 검증
+  public List<AiJudgmentSummaryResponse> getAiJudgments(UUID organizationId, UUID incidentId) {
+    findIncident(organizationId, incidentId); // 존재 + 조직 검증
     return aiJudgmentLogRepository.findByRelatedIncidentIdOrderByCreatedAtDesc(incidentId).stream()
         .map(AiJudgmentSummaryResponse::from)
         .toList();
@@ -268,8 +280,8 @@ public class IncidentService {
 
   // FR-20 CMD-001/002: 배정 확정 시 1회 계산돼 캐시된 후발대 경로·ETA. 캐시가 없으면(TTL 만료 등)
   // 재계산하지 않고 그대로 "정보 없음"을 알린다 — 실제로 계산되지 않은 값을 임의로 만들어내지 않는다.
-  public RouteEstimateResponse getGroundRouteEstimate(UUID incidentId) {
-    findIncident(incidentId); // 존재 검증
+  public RouteEstimateResponse getGroundRouteEstimate(UUID organizationId, UUID incidentId) {
+    findIncident(organizationId, incidentId); // 존재 + 조직 검증
     return routingApiClient.getCachedGroundRoute(incidentId.toString())
         .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "아직 후발대 경로 정보가 없습니다."));
   }
@@ -282,6 +294,16 @@ public class IncidentService {
 
   Incident findIncident(UUID incidentId) {
     return incidentRepository.findById(incidentId).orElseThrow(() -> new BusinessException(ErrorCode.INCIDENT_NOT_FOUND));
+  }
+
+  // 컨트롤러가 경로변수로 받은 incidentId가 호출자 조직 소속인지까지 검증한다 — 다른 조직의
+  // incident_id를 추측해 직접 조회·조작하는 경로를 막는다(멀티테넌시 1단계).
+  private Incident findIncident(UUID organizationId, UUID incidentId) {
+    Incident incident = findIncident(incidentId);
+    if (!incident.getOrganizationId().equals(organizationId)) {
+      throw new BusinessException(ErrorCode.INCIDENT_NOT_FOUND);
+    }
+    return incident;
   }
 
   // REQUIRES_NEW: IncidentCreatedListener(AFTER_COMMIT)에서 호출된다. 원래 트랜잭션은 이미 물리적으로

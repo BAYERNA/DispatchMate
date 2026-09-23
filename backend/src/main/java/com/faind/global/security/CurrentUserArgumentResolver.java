@@ -1,6 +1,5 @@
 package com.faind.global.security;
 
-import java.util.UUID;
 import org.springframework.core.MethodParameter;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -29,10 +28,6 @@ public class CurrentUserArgumentResolver implements HandlerMethodArgumentResolve
     if (authentication == null || !authentication.isAuthenticated()) {
       return null;
     }
-    String role = authentication.getAuthorities().stream()
-        .findFirst()
-        .map(a -> a.getAuthority().replace("ROLE_", ""))
-        .orElse(null);
-    return new AuthenticatedUser(UUID.fromString((String) authentication.getPrincipal()), role);
+    return authentication.getPrincipal() instanceof AuthenticatedUser authenticatedUser ? authenticatedUser : null;
   }
 }

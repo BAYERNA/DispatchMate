@@ -25,6 +25,10 @@ export function LoginPage() {
       // CMN-001 annot#2: 최초 로그인 시 CMN-002로 강제 이동.
       if (user.initialPassword) {
         navigate('/initial-password', { replace: true })
+      } else if (user.role === 'SUPER_ADMIN') {
+        // 슈퍼관리자는 ADMIN 전용 관리자 콘솔(RequireAuth 기본값)에 들어갈 수 없으므로
+        // 조직 온보딩 화면으로 보낸다.
+        navigate('/organizations', { replace: true })
       } else {
         const from = (location.state as { from?: Location })?.from?.pathname ?? '/'
         navigate(from, { replace: true })

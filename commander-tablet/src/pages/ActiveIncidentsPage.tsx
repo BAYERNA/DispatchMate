@@ -84,6 +84,11 @@ export function ActiveIncidentsPage() {
             >
               <div className="incident-number">
                 {incident.incidentNumber} · {SOURCE_LABEL[incident.source] ?? incident.source}
+                {incident.droneDispatchSkipReason && (
+                  <span className="tag risk-danger" style={{ marginLeft: 6 }}>
+                    드론 미배정
+                  </span>
+                )}
               </div>
               <div className="incident-address">{incident.address ?? '주소 정보 없음'}</div>
               <div className="incident-number">{formatDateTime(incident.reportedAt)}</div>

@@ -69,6 +69,13 @@ faind:
   statistics:
     # FR-27 "기존 평균 출동시간" 기준값(초). 실서비스 단계에서는 소방청 통계 API로 대체.
     existing-average-dispatch-seconds: 492
+  drone:
+    weather-safety:
+      # FAIND 사업계획서: "기상 조건이 사전 설정된 비행 안전 기준을 벗어나면, 다른 조건을 다
+      # 충족해도 출동을 보류한다." 일반 소형 드론의 통상 안전 운용 한계치를 기본값으로 둔다 —
+      # 조직별로 다르면 나중에 조직 단위 설정으로 옮길 수 있다.
+      max-wind-speed-ms: 10.0
+      max-precipitation-mm: 0.1
   integration:
     ai-server:
       base-url: ${AI_SERVER_BASE_URL:http://localhost:8001}

@@ -25,6 +25,11 @@ const db = new PGlite({ extensions: { pgcrypto } });
 const migrations = new URL('../../backend/src/main/resources/db/migration/', import.meta.url);
 const rows = async (sql, args = []) => (await db.query(sql, args)).rows;
 const uuid = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+// 멀티테넌시 1단계(V17) 이후 이 조직 하나(V17이 고정 UUID로 심는 기존 단일배포용 DEFAULT
+// 조직) 안에서만 시나리오를 돌린다 — 조직 간 격리 자체는 각 서비스의 .spec.ts에서 이미
+// 단위테스트로 검증하므로, 이 스모크 테스트는 "org 컬럼이 있어도 같은 조직 내 정상 흐름이
+// 깨지지 않는지"만 확인하면 된다.
+const DEFAULT_ORG = '00000000-0000-0000-0000-000000000001';
 const incident = uuid(1), otherIncident = uuid(2), a = uuid(11), b = uuid(12), inactive = uuid(13), later = uuid(14);
 const historical = uuid(20), broadcast = uuid(21), targeted = uuid(22);
 let checks = 0;
@@ -50,9 +55,31 @@ try {
   await db.exec(await readFile(new URL('V12__resilience_governance_and_federation.sql', migrations), 'utf8'));
   await db.exec(await readFile(new URL('V13__production_assurance_and_policy_execution.sql', migrations), 'utf8'));
   await db.exec(await readFile(new URL('V14__field_integration_and_decision_support.sql', migrations), 'utf8'));
+  await db.exec(await readFile(new URL('V15__widen_ai_drift_snapshots_status.sql', migrations), 'utf8'));
+  // V16(sop_documents_vector_search)은 건너뛴다 — pgvector 확장(CREATE EXTENSION vector)이
+  // 필요한데 이 PGlite 인스턴스는 pgcrypto만 로드하고, 이 스크립트가 다루는 어떤 서비스도
+  // sop_documents를 참조하지 않는다(V19 주석대로 sop_documents는 ai-server↔backend 내부
+  // 경로 전용). V17 이후 마이그레이션들도 sop_documents에 의존하지 않으므로 건너뛰어도 안전하다.
+  await db.exec(await readFile(new URL('V17__organizations_and_tenant_anchors.sql', migrations), 'utf8'));
+  await db.exec(await readFile(new URL('V18__federation_agencies_per_organization.sql', migrations), 'utf8'));
+  await db.exec(await readFile(new URL('V19__facility_profiles_and_training_sessions_isolation.sql', migrations), 'utf8'));
+  await db.exec(await readFile(new URL('V20__super_admin_organization_onboarding.sql', migrations), 'utf8'));
+  await db.exec(await readFile(new URL('V21__retention_execution_plans_per_organization.sql', migrations), 'utf8'));
+  await rows('UPDATE users SET organization_id=$1', [DEFAULT_ORG]);
+  await rows('UPDATE incidents SET organization_id=$1', [DEFAULT_ORG]);
+  // OrganizationScopeService는 실제로는 TypeORM Repository.findOne()을 쓰지만, 이 스크립트는
+  // 다른 모든 협력 객체(alerts/config 등)와 같은 방식으로 raw SQL 기반의 동등한 모의 객체를
+  // 준다 — 여기서 검증하려는 건 "org 스코프 로직이 있어도 같은 조직 내 정상 흐름이 도는지"이지
+  // OrganizationScopeService 자체의 구현이 아니다(그건 organization-scope.service.spec.ts가 맡는다).
+  const orgScope = {
+    async assertIncident(user, incidentId) {
+      const row = (await rows('SELECT organization_id AS "organizationId" FROM incidents WHERE incident_id=$1', [incidentId]))[0];
+      if (!row || row.organizationId !== user.organizationId) throw new Error('cross-organization incident access');
+    },
+  };
   const delivery = new DeliveryService({ query: rows });
-  const operator = {userId:uuid(99),role:'COMMANDER'};
-  const user = {userId:a,role:'RESPONDER'};
+  const operator = {userId:uuid(99),role:'COMMANDER',organizationId:DEFAULT_ORG};
+  const user = {userId:a,role:'RESPONDER',organizationId:DEFAULT_ORG};
   assert.equal((await delivery.status(incident, operator))[0].tracked, false);
   checks++;
   await rows('INSERT INTO alerts(alert_id,incident_id) VALUES($1,$2)', [broadcast,incident]);
@@ -65,7 +92,7 @@ try {
   assert.equal((await delivery.status(incident, operator)).find(row=>row.alertId===broadcast).recipients.length, 2);
   checks++;
   await delivery.receive(otherIncident,user,[broadcast]);
-  await delivery.receive(incident,{userId:b,role:'RESPONDER'},[targeted]);
+  await delivery.receive(incident,{userId:b,role:'RESPONDER',organizationId:DEFAULT_ORG},[targeted]);
   assert.equal((await rows('SELECT count(*)::int AS n FROM alert_deliveries WHERE received_at IS NOT NULL'))[0].n,0);
   checks++;
   await delivery.receive(incident,user,[broadcast,broadcast]);
@@ -108,14 +135,14 @@ try {
   assert.equal((await rows('SELECT count(*)::int AS n FROM alert_deliveries WHERE alert_id=$1',[uuid(50)]))[0].n,0);
   checks++;
   const commander=uuid(90);
-  await rows(`INSERT INTO users(user_id,name,role,badge_number,password_hash,status) VALUES($1,'지휘관','COMMANDER','0090','test','ACTIVE')`,[commander]);
+  await rows(`INSERT INTO users(user_id,organization_id,name,role,badge_number,password_hash,status) VALUES($1,$2,'지휘관','COMMANDER','0090','test','ACTIVE')`,[commander,DEFAULT_ORG]);
   const admin=uuid(91);
-  await rows(`INSERT INTO users(user_id,name,role,badge_number,password_hash,status) VALUES($1,'관리자','ADMIN','0091','test','ACTIVE')`,[admin]);
-  const operations=new OperationsService({query:rows});
-  const commanderUser={userId:commander,badgeNumber:'0090',role:'COMMANDER'};
-  const adminUser={userId:admin,badgeNumber:'0091',role:'ADMIN'};
-  const secondAdmin=uuid(92);await rows(`INSERT INTO users(user_id,name,role,badge_number,password_hash,status) VALUES($1,'보안관리자','ADMIN','0092','test','ACTIVE')`,[secondAdmin]);
-  const secondAdminUser={userId:secondAdmin,badgeNumber:'0092',role:'ADMIN'};
+  await rows(`INSERT INTO users(user_id,organization_id,name,role,badge_number,password_hash,status) VALUES($1,$2,'관리자','ADMIN','0091','test','ACTIVE')`,[admin,DEFAULT_ORG]);
+  const operations=new OperationsService({query:rows},orgScope);
+  const commanderUser={userId:commander,badgeNumber:'0090',role:'COMMANDER',organizationId:DEFAULT_ORG};
+  const adminUser={userId:admin,badgeNumber:'0091',role:'ADMIN',organizationId:DEFAULT_ORG};
+  const secondAdmin=uuid(92);await rows(`INSERT INTO users(user_id,organization_id,name,role,badge_number,password_hash,status) VALUES($1,$2,'보안관리자','ADMIN','0092','test','ACTIVE')`,[secondAdmin,DEFAULT_ORG]);
+  const secondAdminUser={userId:secondAdmin,badgeNumber:'0092',role:'ADMIN',organizationId:DEFAULT_ORG};
   const training=await operations.createTraining(commanderUser,'지하 화재 훈련','FIRE');
   await operations.trainingAction(training.trainingId,commanderUser,'START');
   await operations.trainingAction(training.trainingId,commanderUser,'EVENT','통신 음영 발생');
@@ -136,29 +163,29 @@ try {
   assert.equal(stats.falsePositiveCount,1);assert.equal(stats.falseNegativeCount,1);
   assert.equal(stats.precisionPercent,50);assert.equal(stats.recallPercent,50);assert.equal(stats.f1ScorePercent,50);checks++;
   const timeline=await operations.timeline(incident,commanderUser);assert.ok(timeline.some(event=>event.eventType==='ALERT_ACKNOWLEDGED'));assert.ok(timeline.some(event=>event.eventType==='AI_JUDGMENT'));checks++;
-  await assert.rejects(async()=>operations.timeline(incident,{userId:a,badgeNumber:'0011',role:'RESPONDER'}));checks++;
+  await assert.rejects(async()=>operations.timeline(incident,{userId:a,badgeNumber:'0011',role:'RESPONDER',organizationId:DEFAULT_ORG}));checks++;
   const alertsCreated=[];
   const missionRepo={query:rows,manager:{transaction:callback=>db.transaction(async tx=>callback({query:async (sql,args)=>(await tx.query(sql,args)).rows}))}};
-  const mission=new MissionService(missionRepo,{createFromSystem:async value=>{alertsCreated.push(value);return value}},{get:()=>undefined});
+  const mission=new MissionService(missionRepo,{createFromSystem:async value=>{alertsCreated.push(value);return value}},{get:()=>undefined},orgScope);
   const initial=await mission.control(incident,commanderUser);assert.ok(initial.sop.length>=3);checks++;
   const command=await mission.createCommand(incident,commanderUser,{commandType:'ASSIGN_TASK',assigneeId:a,title:'2층 수색'});
   assert.equal(alertsCreated[0].automationKey,`command:${command.commandId}`);
-  await mission.commandStatus(command.commandId,{userId:a,badgeNumber:'0011',role:'RESPONDER'},'ACKNOWLEDGED');
-  await assert.rejects(()=>mission.commandStatus(command.commandId,{userId:b,badgeNumber:'0012',role:'RESPONDER'},'COMPLETED'));checks++;
-  const sop=(await mission.control(incident,commanderUser)).sop[0];await mission.sopStatus(sop.sopItemId,{userId:a,badgeNumber:'0011',role:'RESPONDER'},'COMPLETED');checks++;
-  const request=await mission.requestResource(incident,{userId:a,badgeNumber:'0011',role:'RESPONDER'},{itemName:'공기호흡기',quantity:2});await mission.resourceStatus(request.requestId,commanderUser,'APPROVED');checks++;
+  await mission.commandStatus(command.commandId,{userId:a,badgeNumber:'0011',role:'RESPONDER',organizationId:DEFAULT_ORG},'ACKNOWLEDGED');
+  await assert.rejects(()=>mission.commandStatus(command.commandId,{userId:b,badgeNumber:'0012',role:'RESPONDER',organizationId:DEFAULT_ORG},'COMPLETED'));checks++;
+  const sop=(await mission.control(incident,commanderUser)).sop[0];await mission.sopStatus(sop.sopItemId,{userId:a,badgeNumber:'0011',role:'RESPONDER',organizationId:DEFAULT_ORG},'COMPLETED');checks++;
+  const request=await mission.requestResource(incident,{userId:a,badgeNumber:'0011',role:'RESPONDER',organizationId:DEFAULT_ORG},{itemName:'공기호흡기',quantity:2});await mission.resourceStatus(request.requestId,commanderUser,'APPROVED');checks++;
   const inventoryItem=await mission.addInventory(adminUser,{resourceType:'EQUIPMENT',name:'예비 공기통',totalQuantity:3,unit:'개'});
-  const linkedRequest=await mission.requestResource(incident,{userId:a,badgeNumber:'0011',role:'RESPONDER'},{resourceId:inventoryItem.resourceId,quantity:2});
+  const linkedRequest=await mission.requestResource(incident,{userId:a,badgeNumber:'0011',role:'RESPONDER',organizationId:DEFAULT_ORG},{resourceId:inventoryItem.resourceId,quantity:2});
   await mission.resourceStatus(linkedRequest.requestId,commanderUser,'APPROVED');
   assert.equal((await mission.inventory(commanderUser)).find(item=>item.resourceId===inventoryItem.resourceId).availableQuantity,1);checks++;
   const floor=await mission.createFloor(incident,commanderUser,{floorLabel:'2F',widthM:30,heightM:20});await mission.marker(incident,commanderUser,{floorId:floor.floorId,markerType:'HAZARD',label:'고온 구역',xPercent:50,yPercent:40});checks++;
   const packet=await mission.packet(incident,commanderUser,{agencyName:'인근 병원',classification:'OPERATIONAL',summary:'환자 이송 준비'});const failedShare=await mission.sharePacket(packet.packetId,commanderUser);assert.equal(failedShare.status,'APPROVED');checks++;
   await mission.addModel(adminUser,{modelName:'fire',version:'1.0',status:'ACTIVE'});await mission.addModel(adminUser,{modelName:'fire',version:'1.1',status:'ACTIVE'});assert.deepEqual((await mission.models(adminUser)).filter(m=>m.modelName==='fire').map(m=>m.status).sort(),['ACTIVE','RETIRED']);checks++;
   await mission.threshold(adminUser,{modelName:'fire',thresholdName:'danger',newValue:0.8,reason:'현장 오탐 감소'});const ready=await mission.readiness(commanderUser);assert.equal(typeof ready.openCommands,'number');checks++;
-  const responderControl=await mission.control(incident,{userId:a,badgeNumber:'0011',role:'RESPONDER'});assert.equal(responderControl.packets.length,0);assert.equal(responderControl.channelAttempts.length,0);assert.ok(responderControl.commands.every(item=>!item.assigneeId||item.assigneeId===a));checks++;
+  const responderControl=await mission.control(incident,{userId:a,badgeNumber:'0011',role:'RESPONDER',organizationId:DEFAULT_ORG});assert.equal(responderControl.packets.length,0);assert.equal(responderControl.channelAttempts.length,0);assert.ok(responderControl.commands.every(item=>!item.assigneeId||item.assigneeId===a));checks++;
   const checkpoint=await mission.checkpoint(adminUser,{artifactRef:'s3://backups/test.dump',checksumSha256:'a'.repeat(64)});const verified=await mission.verifyCheckpoint(checkpoint.checkpointId,adminUser);assert.equal(verified.restoreVerified,true);checks++;
-  const advanced=new AdvancedOperationsService(missionRepo,{createFromSystem:async value=>{alertsCreated.push(value);return value}},{get:()=>undefined});
-  const responderUser={userId:a,badgeNumber:'0011',role:'RESPONDER'};
+  const advanced=new AdvancedOperationsService(missionRepo,{createFromSystem:async value=>{alertsCreated.push(value);return value}},{get:()=>undefined},orgScope);
+  const responderUser={userId:a,badgeNumber:'0011',role:'RESPONDER',organizationId:DEFAULT_ORG};
   const mayday=await advanced.mayday(incident,responderUser,{location:{latitude:37.5,longitude:127}});assert.equal(mayday.status,'ACTIVE');await advanced.maydayStatus(mayday.signalId,commanderUser,'ACKNOWLEDGED');checks++;
   const par=await advanced.startPar(incident,commanderUser,{deadlineSeconds:120});await advanced.respondPar(par.sessionId,responderUser,{response:'SAFE'});checks++;
   await advanced.position(incident,responderUser,{source:'UWB',floorId:floor.floorId,xPercent:20,yPercent:30,accuracyM:1});checks++;
@@ -171,7 +198,7 @@ try {
   await rows(`INSERT INTO responder_status_logs(incident_id,user_id,recorded_at,risk_level,connection_status,biometric_data,environment_data) VALUES($1,$2,now(),'DANGER','DISCONNECTED','{"heartRate":190}','{"ambientTemperature":90}')`,[incident,a]);
   const automated=[];const automation=new AutomationService({query:rows},{createFromSystem:async value=>{automated.push(value);return value}},{get:()=>undefined});await automation.safety();assert.ok(automated.length>=4);checks++;
   await rows(`UPDATE alert_deliveries SET queued_at=now()-interval '2 minutes' WHERE alert_id=$1`,[broadcast]);await automation.channels();const queued=await rows(`SELECT count(*)::int AS n FROM durable_jobs WHERE payload->>'alertId'=$1`,[broadcast]);assert.equal(queued[0].n,3);checks++;
-  const governance=new GovernanceService(missionRepo,{get:(key,fallback)=>fallback});
+  const governance=new GovernanceService(missionRepo,{get:(key,fallback)=>fallback},orgScope);
   const lease=await governance.acquireLease('automation:primary','node-a',30);assert.equal(lease.ownerId,'node-a');assert.equal(await governance.acquireLease('automation:primary','node-b',30),null);assert.equal((await governance.releaseLease('automation:primary','node-a',Number(lease.fencingToken))).released,true);checks++;
   const audit=await governance.audit(adminUser,'INCIDENT_REVIEWED','incident',incident,{result:'ok'},incident);assert.ok(audit.eventHash);assert.equal((await governance.verifyAudit(adminUser)).valid,true);checks++;
   const mutation=uuid(300);const sync1=await governance.sync(responderUser,{mutationId:mutation,incidentId:incident,entityType:'status',entityId:a,operation:'UPDATE',baseVersion:0,payload:{state:'SAFE'}});assert.equal(sync1.resolution,'APPLIED');assert.equal((await governance.sync(responderUser,{mutationId:mutation,entityType:'status',entityId:a,operation:'UPDATE',payload:{}})).serverVersion,1);checks++;
@@ -182,7 +209,7 @@ try {
   const building=await governance.buildingModel(adminUser,{facilityName:'훈련동',modelFormat:'IFC',version:'1',sourceUri:'bim://training/1',contentHash:'d'.repeat(64)});const radio=await governance.transcript(incident,commanderUser,{channelLabel:'지휘망',transcript:'메이데이, 2층 구조 요청',startedAt:new Date().toISOString()});checks++;
   const publicToken=await governance.createPublicToken(incident,commanderUser,{audience:'PUBLIC',ttlMinutes:10});const publicView=await governance.publicStatus(publicToken.token);assert.equal(publicView.status,'IN_PROGRESS');assert.equal(publicView.location,undefined);checks++;
   await governance.preferences(responderUser,{locale:'ko-KR',highContrast:true,textScale:1.25,roleLayout:{compact:true}});await governance.retention(adminUser,{dataCategory:'radio_transcript',retentionDays:180,action:'ANONYMIZE'});checks++;
-  const assurance=new AssuranceService(missionRepo);
+  const assurance=new AssuranceService(missionRepo,orgScope);
   await rows(`INSERT INTO push_subscriptions(user_id,platform,endpoint_token) VALUES($1,'WEB','test-endpoint')`,[a]);
   const originalFetch=global.fetch;let fetchAttempts=0;global.fetch=async()=>{fetchAttempts++;throw new Error('provider down')};
   const providerAutomation=new AutomationService(missionRepo,{createFromSystem:async value=>value},{get:key=>key==='PUSH_GATEWAY_URL'?'http://gateway.test':undefined});
@@ -198,7 +225,7 @@ try {
   const manifest=await assurance.auditExport(adminUser,{artifactUri:'worm://audit/export-1',artifactHash:'f'.repeat(64)});assert.ok(manifest.eventCount>=1);checks++;
   const signingPair=generateKeyPairSync('ec',{namedCurve:'P-256'}),publicPem=signingPair.publicKey.export({type:'spki',format:'pem'}),documentHash='9'.repeat(64);await assurance.signingKey(adminUser,{keyId:'hospital-test-key',ownerLabel:'테스트 병원',algorithm:'ECDSA-SHA256',publicKeyPem:publicPem,validFrom:new Date(Date.now()-60000).toISOString(),validUntil:new Date(Date.now()+86400000).toISOString()});const signatureValue=sign('sha256',Buffer.from(documentHash,'hex'),signingPair.privateKey).toString('base64');const electronicSignature=await governance.signature(commanderUser,{resourceType:'HANDOVER',resourceId:incident,documentHash,signatureValue,publicKeyId:'hospital-test-key',signatureAlgorithm:'ECDSA-SHA256'});assert.equal((await assurance.verifySignature(electronicSignature.signatureId,adminUser)).verificationStatus,'VALID');checks++;
   const oldModel=await governance.registerModel(adminUser,{modelName:'fire-detection',version:'1.0',artifactUri:'registry://fire/1.0',artifactHash:'1'.repeat(64)});await governance.modelAction(oldModel.releaseId,adminUser,'APPROVE');await governance.modelAction(oldModel.releaseId,adminUser,'ACTIVATE');const newModel=await governance.registerModel(adminUser,{modelName:'fire-detection',version:'2.0',artifactUri:'registry://fire/2.0',artifactHash:'2'.repeat(64)});await governance.modelAction(newModel.releaseId,adminUser,'APPROVE');await governance.modelAction(newModel.releaseId,adminUser,'ACTIVATE');await assurance.guardrail(adminUser,{modelName:'fire-detection',minimumSamples:20,maxFalsePositiveRate:.25,maxFalseNegativeRate:.2,autoRollback:true});await providerAutomation.rollbackDriftedModel('fire-detection',25,.4,.1);assert.equal((await rows(`SELECT version FROM ai_model_releases WHERE model_name='fire-detection' AND status='ACTIVE'`))[0].version,'1.0');checks++;
-  const field=new FieldIntelligenceService(missionRepo,{get:key=>key==='PROVIDER_TEST_WEBHOOK_SECRET'?'webhook-test-value':undefined},{createFromSystem:async value=>{alertsCreated.push(value);return value}});
+  const field=new FieldIntelligenceService(missionRepo,{get:key=>key==='PROVIDER_TEST_WEBHOOK_SECRET'?'webhook-test-value':undefined},{createFromSystem:async value=>{alertsCreated.push(value);return value}},orgScope);
   const webhookBody=Buffer.from('{"status":"delivered"}'),webhookSignature=createHmac('sha256','webhook-test-value').update(webhookBody).digest('hex');const receipt=await field.webhook('test','event-1','DELIVERED',webhookSignature,webhookBody);assert.equal(receipt.status,'PROCESSED');assert.equal((await field.webhook('test','event-1','DELIVERED',webhookSignature,webhookBody)).status,'DUPLICATE');await assert.rejects(()=>field.webhook('test','event-2','DELIVERED','bad',webhookBody));checks++;
   await field.uploadChunk(responderUser,{chunkId:uuid(401),assetId:asset.assetId,chunkIndex:0,byteSize:512,contentHash:'a'.repeat(64)});await field.importBim(building.modelId,adminUser,{elements:[{externalId:'exit-1',elementType:'EXIT',label:'동측 비상구',floorLabel:'1F',geometry:{type:'Point',coordinates:[127,37.5]}}]});checks++;
   const detected=await field.analyzeTranscript(radio.transcriptId,commanderUser);assert.ok(detected.detections.some(item=>item.keyword==='MAYDAY'));checks++;

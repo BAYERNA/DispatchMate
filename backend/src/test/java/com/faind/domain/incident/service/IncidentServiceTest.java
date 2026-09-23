@@ -52,9 +52,11 @@ class IncidentServiceTest {
         aiJudgmentLogRepository, routingApiClient);
   }
 
+  private static final UUID ORG_ID = UUID.randomUUID();
+
   private Incident dispatchedIncident() {
     return Incident.manualReport(
-        "2026-0001", IncidentType.FIRE, "서울 강남구", null, null, LocalDateTime.now(), UUID.randomUUID());
+        ORG_ID, "2026-0001", IncidentType.FIRE, "서울 강남구", null, null, LocalDateTime.now(), UUID.randomUUID());
   }
 
   @Test
@@ -63,7 +65,7 @@ class IncidentServiceTest {
     when(incidentRepository.findById(incidentId)).thenReturn(Optional.of(dispatchedIncident()));
     when(assignmentRepository.existsByIncidentId(incidentId)).thenReturn(false);
 
-    var response = incidentService.assign(incidentId, new AssignmentRequest(UUID.randomUUID(), "화점진압"));
+    var response = incidentService.assign(ORG_ID, incidentId, new AssignmentRequest(UUID.randomUUID(), "화점진압"));
 
     assertThat(response.firstWave()).isTrue();
     assertThat(response.commsLead()).isTrue();
@@ -75,7 +77,7 @@ class IncidentServiceTest {
     when(incidentRepository.findById(incidentId)).thenReturn(Optional.of(dispatchedIncident()));
     when(assignmentRepository.existsByIncidentId(incidentId)).thenReturn(true); // 이미 배정자가 있음
 
-    var response = incidentService.assign(incidentId, new AssignmentRequest(UUID.randomUUID(), "지원"));
+    var response = incidentService.assign(ORG_ID, incidentId, new AssignmentRequest(UUID.randomUUID(), "지원"));
 
     assertThat(response.firstWave()).isFalse();
     assertThat(response.commsLead()).isFalse();
@@ -89,7 +91,7 @@ class IncidentServiceTest {
     when(incidentRepository.findById(incidentId)).thenReturn(Optional.of(incident));
 
     incidentService.recordResponderStatus(
-        incidentId, new ResponderStatusRequest(userId, null, null, "NORMAL", "CONNECTED"), userId);
+        ORG_ID, incidentId, new ResponderStatusRequest(userId, null, null, "NORMAL", "CONNECTED"), userId);
 
     assertThat(incident.getStatus().name()).isEqualTo("IN_PROGRESS");
   }
@@ -105,7 +107,7 @@ class IncidentServiceTest {
     // markInProgress()를 DISPATCHED가 아닐 때 다시 호출하면 예외가 나므로, 이 호출이
     // 예외 없이 끝난다는 것 자체가 "조건부로만 호출한다"는 로직이 지켜지고 있다는 증거다.
     incidentService.recordResponderStatus(
-        incidentId, new ResponderStatusRequest(userId, null, null, "NORMAL", "CONNECTED"), userId);
+        ORG_ID, incidentId, new ResponderStatusRequest(userId, null, null, "NORMAL", "CONNECTED"), userId);
 
     assertThat(incident.getStatus().name()).isEqualTo("IN_PROGRESS");
   }
@@ -119,7 +121,7 @@ class IncidentServiceTest {
     org.junit.jupiter.api.Assertions.assertThrows(
         com.faind.global.error.BusinessException.class,
         () -> incidentService.recordResponderStatus(
-            incidentId, new ResponderStatusRequest(otherUserId, null, null, "NORMAL", "CONNECTED"), reporterUserId));
+            ORG_ID, incidentId, new ResponderStatusRequest(otherUserId, null, null, "NORMAL", "CONNECTED"), reporterUserId));
   }
 
   @Test
@@ -139,5 +141,30 @@ class IncidentServiceTest {
     when(assignmentRepository.findByIncidentIdAndUserId(incidentId, userId)).thenReturn(Optional.empty());
 
     assertThat(incidentService.isResponderAssigned(incidentId, userId)).isFalse();
+  }
+
+  // 멀티테넌시 1단계(V17) 회귀 방지: 다른 조직의 incident_id를 알거나 추측해도 조회·종료가
+  // 되지 않아야 한다.
+  @Test
+  void 다른_조직의_출동은_조회할_수_없다() {
+    UUID incidentId = UUID.randomUUID();
+    when(incidentRepository.findById(incidentId)).thenReturn(Optional.of(dispatchedIncident()));
+
+    assertThat(
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.faind.global.error.BusinessException.class,
+                () -> incidentService.getIncident(UUID.randomUUID(), incidentId))
+            .getErrorCode())
+        .isEqualTo(com.faind.global.error.ErrorCode.INCIDENT_NOT_FOUND);
+  }
+
+  @Test
+  void 다른_조직의_출동은_종료할_수_없다() {
+    UUID incidentId = UUID.randomUUID();
+    when(incidentRepository.findById(incidentId)).thenReturn(Optional.of(dispatchedIncident()));
+
+    org.junit.jupiter.api.Assertions.assertThrows(
+        com.faind.global.error.BusinessException.class,
+        () -> incidentService.close(UUID.randomUUID(), incidentId));
   }
 }

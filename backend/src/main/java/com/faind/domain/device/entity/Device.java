@@ -23,6 +23,11 @@ public class Device {
   @Column(name = "device_id")
   private UUID deviceId;
 
+  // 멀티테넌시 1단계(V17): 이 기기가 속한 조직. CCTV/드론 격리 판단의 근거가 되므로
+  // CctvDetectionService처럼 로그인 사용자가 없는 내부 호출 경로에서도 이 값을 신뢰한다.
+  @Column(name = "organization_id", nullable = false)
+  private UUID organizationId;
+
   @Enumerated(EnumType.STRING)
   @Column(name = "device_type", nullable = false, length = 30)
   private DeviceType deviceType;
@@ -61,6 +66,7 @@ public class Device {
   protected Device() {}
 
   public Device(
+      UUID organizationId,
       DeviceType deviceType,
       String serialNo,
       String connectionType,
@@ -69,6 +75,7 @@ public class Device {
       BigDecimal longitude,
       Integer batteryLevel,
       String streamUrl) {
+    this.organizationId = organizationId;
     this.deviceType = deviceType;
     this.serialNo = serialNo;
     this.connectionType = connectionType;
@@ -117,6 +124,10 @@ public class Device {
 
   public UUID getDeviceId() {
     return deviceId;
+  }
+
+  public UUID getOrganizationId() {
+    return organizationId;
   }
 
   public DeviceType getDeviceType() {

@@ -91,9 +91,9 @@ public class ReportService {
   }
 
   // FR-13: statistics 패키지가 "검토 완료율"을 계산할 때 사용 (report_analyses 직접 접근 금지, 이 메서드를 거친다).
-  public ReviewStatsResponse getReviewStats() {
-    long total = reportAnalysisRepository.count();
-    long reviewed = reportAnalysisRepository.countByReviewStatus("REVIEWED");
+  public ReviewStatsResponse getReviewStats(UUID organizationId) {
+    long total = reportAnalysisRepository.countByOrganization(organizationId);
+    long reviewed = reportAnalysisRepository.countByReviewStatusAndOrganization("REVIEWED", organizationId);
     return new ReviewStatsResponse(total, reviewed);
   }
 

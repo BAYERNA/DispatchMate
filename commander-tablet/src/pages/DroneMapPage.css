@@ -1,0 +1,42 @@
+.drone-map-legend {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.drone-map-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.drone-map-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.drone-map-svg {
+  width: 100%;
+  height: auto;
+  margin-bottom: 16px;
+  border: 1px solid var(--color-border-soft);
+}
+
+.drone-map-bg {
+  fill: var(--color-fill);
+}
+
+.drone-map-line {
+  stroke: var(--color-ink-soft);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+.drone-map-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  fill: var(--color-ink);
+}

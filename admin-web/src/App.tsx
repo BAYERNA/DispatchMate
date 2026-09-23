@@ -13,6 +13,8 @@ import { StatisticsPage } from './pages/StatisticsPage'
 import { OperationsReadinessPage } from './pages/OperationsReadinessPage'
 import { OperationalIntelligencePage } from './pages/OperationalIntelligencePage'
 import { GovernancePage } from './pages/GovernancePage'
+import { OrganizationsPage } from './pages/OrganizationsPage'
+import { NoFlyZonesPage } from './pages/NoFlyZonesPage'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -31,6 +33,22 @@ export default function App() {
             />
             <Route path="/intelligence" element={<RequireAuth><OperationalIntelligencePage /></RequireAuth>} />
             <Route path="/governance" element={<RequireAuth><GovernancePage /></RequireAuth>} />
+            <Route
+              path="/organizations"
+              element={
+                <RequireAuth allowedRoles={['SUPER_ADMIN']}>
+                  <OrganizationsPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/no-fly-zones"
+              element={
+                <RequireAuth allowedRoles={['SUPER_ADMIN']}>
+                  <NoFlyZonesPage />
+                </RequireAuth>
+              }
+            />
             <Route
               path="/initial-password"
               element={

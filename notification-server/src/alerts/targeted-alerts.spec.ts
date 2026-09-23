@@ -4,8 +4,8 @@ describe('targeted alert visibility', () => {
   it('keeps private alerts out of another responder history and allows operator oversight', async () => {
     const alerts = [{alertId:'broadcast',targetUserId:null},{alertId:'mine',targetUserId:'a'},{alertId:'other',targetUserId:'b'}];
     const service = new AlertsService({find:async()=>alerts} as any, {} as any);
-    expect((await service.listByIncident('incident',{userId:'a',badgeNumber:'a',role:'RESPONDER'})).map(alert=>alert.alertId)).toEqual(['broadcast','mine']);
-    expect(await service.listByIncident('incident',{userId:'c',badgeNumber:'c',role:'COMMANDER'})).toEqual(alerts);
+    expect((await service.listByIncident('incident',{userId:'a',badgeNumber:'a',role:'RESPONDER',organizationId:'org-1'})).map(alert=>alert.alertId)).toEqual(['broadcast','mine']);
+    expect(await service.listByIncident('incident',{userId:'c',badgeNumber:'c',role:'COMMANDER',organizationId:'org-1'})).toEqual(alerts);
   });
   it('rejects a target who is not an active assigned responder before saving', async () => {
     const repository = {query:jest.fn().mockResolvedValue([]),save:jest.fn()};

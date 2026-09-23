@@ -12,13 +12,15 @@ import org.springframework.data.repository.query.Param;
 
 public interface DeviceRepository extends JpaRepository<Device, UUID>, JpaSpecificationExecutor<Device> {
 
+  // 멀티테넌시 1단계(V17): serial_no 유일성은 여전히 전역이다(§DB설계서 unique 제약 변경 없음) —
+  // 기기 자체는 물리적으로 하나뿐이라 조직이 달라도 같은 시리얼을 재사용할 수 없다.
   boolean existsBySerialNo(String serialNo);
 
-  List<Device> findByDeviceType(DeviceType deviceType);
+  List<Device> findByOrganizationIdAndDeviceType(UUID organizationId, DeviceType deviceType);
 
-  List<Device> findByDeviceTypeAndStatus(DeviceType deviceType, String status);
+  List<Device> findByOrganizationIdAndDeviceTypeAndStatus(UUID organizationId, DeviceType deviceType, String status);
 
-  long countByStatusIn(List<String> statuses);
+  long countByOrganizationIdAndStatusIn(UUID organizationId, List<String> statuses);
 
   // FR-25 드론 자동배정 — status='NORMAL'을 조건절에 넣어 UPDATE 자체를 원자적인 "선점"으로 쓴다.
   // findNearestAvailableDrone()으로 후보를 고른 뒤 이걸로 확정하는 2단계라, 그 사이 다른 요청이

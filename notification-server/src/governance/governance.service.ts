@@ -5,6 +5,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Repository } from 'typeorm';
 import { Alert } from '../alerts/entities/alert.entity';
 import { AuthenticatedUser } from '../auth/authenticated-user.interface';
+import { OrganizationScopeService } from '../common/organization-scope/organization-scope.service';
 
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const stable = (value: unknown): string => {
@@ -18,6 +19,7 @@ export class GovernanceService {
   constructor(
     @InjectRepository(Alert) private readonly db: Repository<Alert>,
     private readonly config: ConfigService,
+    private readonly orgScope: OrganizationScopeService,
   ) {}
 
   private operator(user: AuthenticatedUser) { if (!['ADMIN', 'COMMANDER'].includes(user.role)) throw new ForbiddenException(); }
@@ -43,6 +45,7 @@ export class GovernanceService {
 
   async audit(user: AuthenticatedUser, action: string, resourceType: string, resourceId: string | null, payload: unknown, incidentId?: string) {
     if (!action?.trim() || !resourceType?.trim()) throw new BadRequestException();
+    if (incidentId) await this.orgScope.assertIncident(user, incidentId);
     return this.db.manager.transaction(async manager => {
       await manager.query(`SELECT pg_advisory_xact_lock(hashtext('dispatchmate:audit-chain'))`);
       const previous = (await manager.query(`SELECT event_hash FROM immutable_audit_events ORDER BY sequence_no DESC LIMIT 1`))[0]?.event_hash ?? null;
@@ -87,6 +90,7 @@ export class GovernanceService {
 
   async sync(user: AuthenticatedUser, body: any) {
     if (!body.mutationId || !body.entityType || !body.entityId || !['CREATE', 'UPDATE', 'DELETE'].includes(body.operation)) throw new BadRequestException();
+    if (body.incidentId) await this.orgScope.assertIncident(user, body.incidentId);
     const duplicate = await this.db.query(`SELECT mutation_id AS "mutationId",resolution,server_version AS "serverVersion",conflict_fields AS "conflictFields" FROM sync_mutations WHERE mutation_id=$1`, [body.mutationId]);
     if (duplicate.length) return duplicate[0];
     const latest = (await this.db.query(`SELECT server_version,payload FROM sync_mutations WHERE entity_type=$1 AND entity_id=$2 ORDER BY server_version DESC LIMIT 1`, [body.entityType, body.entityId]))[0];
@@ -124,6 +128,7 @@ export class GovernanceService {
 
   async forecast(incidentId: string, user: AuthenticatedUser, body: any) {
     this.operator(user);
+    await this.orgScope.assertIncident(user, incidentId);
     const horizon = Number(body.horizonMinutes ?? 60);
     if (!Number.isInteger(horizon) || horizon < 5 || horizon > 1440) throw new BadRequestException();
     const [assigned] = await this.db.query(`SELECT COUNT(*)::int AS count FROM incident_assignments WHERE incident_id=$1`, [incidentId]);
@@ -135,6 +140,7 @@ export class GovernanceService {
 
   async createPublicToken(incidentId: string, user: AuthenticatedUser, body: any) {
     this.operator(user);
+    await this.orgScope.assertIncident(user, incidentId);
     if (!['PUBLIC', 'FACILITY_MANAGER', 'FAMILY_LIAISON'].includes(body.audience)) throw new BadRequestException();
     const token = randomBytes(32).toString('base64url');
     const allowed = body.allowedFields ?? ['incidentNumber', 'status', 'incidentType', 'updatedAt'];
@@ -156,6 +162,7 @@ export class GovernanceService {
 
   async transcript(incidentId: string, user: AuthenticatedUser, body: any) {
     this.operator(user);
+    await this.orgScope.assertIncident(user, incidentId);
     if (!body.channelLabel?.trim() || !body.transcript?.trim() || !body.startedAt) throw new BadRequestException();
     return (await this.db.query(`INSERT INTO radio_transcripts(incident_id,channel_label,speaker_label,transcript,language,confidence,audio_uri,started_at,ended_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING transcript_id AS "transcriptId",review_status AS "reviewStatus"`, [incidentId, body.channelLabel.trim(), body.speakerLabel?.trim() || null, body.transcript.trim(), body.language ?? 'ko', body.confidence ?? null, body.audioUri ?? null, body.startedAt, body.endedAt ?? null]))[0];
   }
@@ -175,21 +182,29 @@ export class GovernanceService {
 
   async evidence(incidentId: string, user: AuthenticatedUser, body: any) {
     this.operator(user);
+    await this.orgScope.assertIncident(user, incidentId);
     if (!['VIDEO', 'IMAGE', 'AUDIO', 'DOCUMENT', 'SENSOR'].includes(body.evidenceType) || !body.sourceUri?.trim() || !/^[a-f0-9]{64}$/i.test(body.contentHash ?? '')) throw new BadRequestException();
     const previous = (await this.db.query(`SELECT custody_hash FROM evidence_assets WHERE incident_id=$1 ORDER BY collected_at DESC LIMIT 1`, [incidentId]))[0]?.custody_hash ?? null;
     const custody = sha256(stable({ incidentId, type: body.evidenceType, uri: body.sourceUri, contentHash: body.contentHash.toLowerCase(), previous, collector: user.userId }));
     return (await this.db.query(`INSERT INTO evidence_assets(incident_id,evidence_type,source_uri,content_hash,previous_custody_hash,custody_hash,encryption_key_ref,retention_until,legal_hold,collected_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING evidence_id AS "evidenceId",custody_hash AS "custodyHash"`, [incidentId, body.evidenceType, body.sourceUri.trim(), body.contentHash.toLowerCase(), previous, custody, body.encryptionKeyRef ?? null, body.retentionUntil ?? null, body.legalHold === true, user.userId]))[0];
   }
 
+  // federation_agencies는 이 조직이 시스템 밖의 다른 기관과 사건을 공유할 때 신뢰하는 파트너
+  // 디렉터리다 — organizations(멀티테넌시, 이 시스템 안의 다른 조직)와는 다른 개념이니 혼동하지
+  // 말 것. agency_code가 예전엔 전역 유일이라, 다른 조직 관리자가 같은 코드로 다시 등록하면
+  // 파트너 기관의 인증서 지문을 덮어써 버리는 신뢰 탈취가 가능했다(V18) — 조직별로 나눠서 막는다.
   async agency(user: AuthenticatedUser, body: any) {
     this.admin(user);
     if (!body.agencyCode?.trim() || !body.name?.trim()) throw new BadRequestException();
-    return (await this.db.query(`INSERT INTO federation_agencies(agency_code,name,endpoint_uri,certificate_fingerprint,capabilities) VALUES($1,$2,$3,$4,$5::jsonb) ON CONFLICT(agency_code) DO UPDATE SET name=EXCLUDED.name,endpoint_uri=EXCLUDED.endpoint_uri,certificate_fingerprint=EXCLUDED.certificate_fingerprint,capabilities=EXCLUDED.capabilities RETURNING agency_id AS "agencyId",trust_status AS "trustStatus"`, [body.agencyCode.trim(), body.name.trim(), body.endpointUri ?? null, body.certificateFingerprint ?? null, JSON.stringify(body.capabilities ?? [])]))[0];
+    return (await this.db.query(`INSERT INTO federation_agencies(organization_id,agency_code,name,endpoint_uri,certificate_fingerprint,capabilities) VALUES($1,$2,$3,$4,$5,$6::jsonb) ON CONFLICT(organization_id,agency_code) DO UPDATE SET name=EXCLUDED.name,endpoint_uri=EXCLUDED.endpoint_uri,certificate_fingerprint=EXCLUDED.certificate_fingerprint,capabilities=EXCLUDED.capabilities RETURNING agency_id AS "agencyId",trust_status AS "trustStatus"`, [user.organizationId, body.agencyCode.trim(), body.name.trim(), body.endpointUri ?? null, body.certificateFingerprint ?? null, JSON.stringify(body.capabilities ?? [])]))[0];
   }
 
   async share(incidentId: string, user: AuthenticatedUser, body: any) {
     this.operator(user);
-    const trusted = await this.db.query(`SELECT 1 FROM federation_agencies WHERE agency_id=$1 AND trust_status='TRUSTED'`, [body.agencyId]);
+    await this.orgScope.assertIncident(user, incidentId);
+    // agencyId도 호출자 조직이 등록한 파트너인지 확인한다 — 그렇지 않으면 다른 조직이 신뢰한
+    // 기관의 agency_id를 추측해 그 신뢰를 빌려 쓰는 경로가 된다.
+    const trusted = await this.db.query(`SELECT 1 FROM federation_agencies WHERE agency_id=$1 AND organization_id=$2 AND trust_status='TRUSTED'`, [body.agencyId, user.organizationId]);
     if (!trusted.length) throw new BadRequestException('신뢰 승인이 완료된 기관에만 공유할 수 있습니다.');
     return (await this.db.query(`INSERT INTO federation_shares(incident_id,agency_id,scope,expires_at,created_by) VALUES($1,$2,$3::jsonb,now()+($4::text||' minutes')::interval,$5) RETURNING share_id AS "shareId",status,expires_at AS "expiresAt"`, [incidentId, body.agencyId, JSON.stringify(body.scope ?? []), Math.min(1440, Math.max(5, Number(body.ttlMinutes ?? 60))), user.userId]))[0];
   }
@@ -214,7 +229,8 @@ export class GovernanceService {
       this.db.query(`SELECT COUNT(*)::int AS count FROM immutable_audit_events`),
       this.db.query(`SELECT lease_key AS "leaseKey",owner_id AS "ownerId",fencing_token AS "fencingToken",expires_at AS "expiresAt" FROM cluster_leases WHERE expires_at>now()`),
       this.db.query(`SELECT release_id AS "releaseId",model_name AS "modelName",version,status,explanation FROM ai_model_releases ORDER BY created_at DESC LIMIT 20`),
-      this.db.query(`SELECT agency_id AS "agencyId",agency_code AS "agencyCode",name,trust_status AS "trustStatus",capabilities FROM federation_agencies ORDER BY name`),
+      // 다른 조직이 등록한 파트너 기관 디렉터리는 노출하지 않는다(V18).
+      this.db.query(`SELECT agency_id AS "agencyId",agency_code AS "agencyCode",name,trust_status AS "trustStatus",capabilities FROM federation_agencies WHERE organization_id=$1 ORDER BY name`, [user.organizationId]),
       this.db.query(`SELECT COUNT(*)::int AS count FROM sync_mutations WHERE resolution='CONFLICT'`),
       this.db.query(`SELECT COUNT(*)::int AS count FROM evidence_assets WHERE legal_hold`),
     ]);
