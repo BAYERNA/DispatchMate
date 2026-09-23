@@ -38,6 +38,12 @@ public class DroneDispatchService {
 
   private static final Logger log = LoggerFactory.getLogger(DroneDispatchService.class);
 
+  // Incident.droneDispatchSkipReason에 남기는 사유 코드 — CMD-001/002가 이 문자열을 라벨로 번역해 보여준다.
+  private static final String SKIP_NO_FLY_ZONE = "NO_FLY_ZONE";
+  private static final String SKIP_UNSAFE_WEATHER = "UNSAFE_WEATHER";
+  private static final String SKIP_NO_DRONE_AVAILABLE = "NO_DRONE_AVAILABLE";
+  private static final String SKIP_DRONE_CONTENDED = "DRONE_CONTENDED";
+
   private final IncidentRepository incidentRepository;
   private final DroneDispatchRepository droneDispatchRepository;
   private final AiJudgmentLogRepository aiJudgmentLogRepository;
@@ -88,6 +94,7 @@ public class DroneDispatchService {
     // 좌표가 있는데 구역 안이면 그 자체로 막는 규제 준수 게이트다.
     if (noFlyZoneService.isRestricted(incident.getLatitude(), incident.getLongitude())) {
       log.info("목표 좌표가 비행금지구역 안에 있어 FR-25 자동배정을 보류합니다 (incidentId={})", incidentId);
+      incident.recordDroneDispatchSkipped(SKIP_NO_FLY_ZONE);
       return Optional.empty();
     }
 
@@ -101,6 +108,7 @@ public class DroneDispatchService {
       log.info(
           "기상 조건이 비행 안전 기준을 벗어나 FR-25 자동배정을 보류합니다 (incidentId={}, windSpeedMs={}, precipitationMm={})",
           incidentId, weather.get().windSpeedMs(), weather.get().precipitationMm());
+      incident.recordDroneDispatchSkipped(SKIP_UNSAFE_WEATHER);
       return Optional.empty();
     }
 
@@ -108,6 +116,7 @@ public class DroneDispatchService {
         incident.getOrganizationId(), incident.getLatitude(), incident.getLongitude());
     if (nearestDrone.isEmpty()) {
       log.info("배정 가능한 드론이 없어 FR-25 자동배정을 건너뜁니다 (incidentId={})", incidentId);
+      incident.recordDroneDispatchSkipped(SKIP_NO_DRONE_AVAILABLE);
       return Optional.empty();
     }
 
@@ -116,8 +125,12 @@ public class DroneDispatchService {
       // 후보를 고른 뒤 선점하는 사이 다른 출동이 같은 드론을 먼저 가져간 경우(동시 배차 경합) —
       // 이번 배정은 건너뛴다. 드물게라도 실제로 겪을 수 있는 경합이라 조용히 무시하지 않고 로그를 남긴다.
       log.info("드론이 동시 배차 경합으로 이미 선점되어 자동배정을 건너뜁니다 (incidentId={}, droneId={})", incidentId, drone.droneId());
+      incident.recordDroneDispatchSkipped(SKIP_DRONE_CONTENDED);
       return Optional.empty();
     }
+    // 이전 시도(예: CCTV 단계 정찰 배정)가 게이트에 막혔던 흔적이 있다면, 이번엔 실제로
+    // 배정됐으니 화면에 낡은 사유가 남지 않도록 지운다.
+    incident.clearDroneDispatchSkip();
     DroneDispatch dispatch = new DroneDispatch(incidentId, drone.droneId());
     droneDispatchRepository.save(dispatch);
 

@@ -70,6 +70,15 @@ public class Incident {
   @Column(name = "created_at", nullable = false)
   private LocalDateTime createdAt;
 
+  // FR-25: 자동배정이 게이트(기상/비행금지구역)나 가용 드론 부족으로 건너뛰어진 사유. 지휘관이
+  // "왜 드론이 안 떴는지" CMD-001/002에서 볼 수 있도록 한다 — 실제 DroneDispatch row가 생기지
+  // 않는 경우라 다른 곳엔 남길 데가 없다.
+  @Column(name = "drone_dispatch_skip_reason", length = 30)
+  private String droneDispatchSkipReason;
+
+  @Column(name = "drone_dispatch_skipped_at")
+  private LocalDateTime droneDispatchSkippedAt;
+
   protected Incident() {}
 
   private Incident(
@@ -171,6 +180,18 @@ public class Incident {
     this.commanderId = commanderId;
   }
 
+  public void recordDroneDispatchSkipped(String reason) {
+    this.droneDispatchSkipReason = reason;
+    this.droneDispatchSkippedAt = LocalDateTime.now();
+  }
+
+  // 이전 시도(예: CCTV 의심감지 단계에서 기상 게이트에 막힘)가 남긴 사유는, 이후 실제로 드론이
+  // 배정되면 더 이상 유효하지 않으므로 지운다 — 화면에 낡은 사유가 계속 남지 않게.
+  public void clearDroneDispatchSkip() {
+    this.droneDispatchSkipReason = null;
+    this.droneDispatchSkippedAt = null;
+  }
+
   public UUID getIncidentId() {
     return incidentId;
   }
@@ -225,5 +246,13 @@ public class Incident {
 
   public LocalDateTime getCreatedAt() {
     return createdAt;
+  }
+
+  public String getDroneDispatchSkipReason() {
+    return droneDispatchSkipReason;
+  }
+
+  public LocalDateTime getDroneDispatchSkippedAt() {
+    return droneDispatchSkippedAt;
   }
 }

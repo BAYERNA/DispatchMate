@@ -149,6 +149,7 @@ class DroneDispatchServiceTest {
 
     assertThat(result).isEmpty();
     verify(deviceService, never()).findNearestAvailableDrone(any(), any(), any());
+    assertThat(incident.getDroneDispatchSkipReason()).isEqualTo("NO_FLY_ZONE");
   }
 
   // FAIND 사업계획서 비행 전 안전 게이트: "기상 조건이 안전 기준을 벗어나면 다른 조건을 다
@@ -166,6 +167,7 @@ class DroneDispatchServiceTest {
 
     assertThat(result).isEmpty();
     verify(deviceService, never()).findNearestAvailableDrone(any(), any(), any());
+    assertThat(incident.getDroneDispatchSkipReason()).isEqualTo("UNSAFE_WEATHER");
   }
 
   @Test
@@ -181,6 +183,7 @@ class DroneDispatchServiceTest {
 
     assertThat(result).isEmpty();
     verify(deviceService, never()).findNearestAvailableDrone(any(), any(), any());
+    assertThat(incident.getDroneDispatchSkipReason()).isEqualTo("UNSAFE_WEATHER");
   }
 
   // 기상 게이트는 핵심 배차 로직의 가용성을 해치면 안 되는 부가 안전장치다 — 관측을 못 가져와도
@@ -198,6 +201,28 @@ class DroneDispatchServiceTest {
     service.autoDispatch(incidentId);
 
     verify(deviceService).findNearestAvailableDrone(any(), any(), any());
+    assertThat(incident.getDroneDispatchSkipReason()).isEqualTo("NO_DRONE_AVAILABLE");
+  }
+
+  // CMD-001/002가 "왜 드론이 안 떴는지" 보여줄 수 있어야 한다 — 이전엔 로그만 남고 흔적이 없었다.
+  @Test
+  void 실제로_드론이_배정되면_이전에_남아있던_스킵_사유를_지운다() {
+    UUID incidentId = UUID.randomUUID();
+    Incident incident = incidentWithCoordinates(ORG_A);
+    incident.recordDroneDispatchSkipped("UNSAFE_WEATHER");
+    NearestDroneResponse drone = new NearestDroneResponse(UUID.randomUUID(), new BigDecimal("37.5"), new BigDecimal("127.0"), "DRONE-001");
+    when(droneDispatchRepository.findByIncidentIdOrderByDispatchedAtDesc(incidentId)).thenReturn(List.of());
+    when(incidentRepository.findById(incidentId)).thenReturn(Optional.of(incident));
+    when(publicDataApiAdapter.fetchCurrentWeather(incident.getLatitude(), incident.getLongitude())).thenReturn(Optional.empty());
+    when(deviceService.findNearestAvailableDrone(any(), any(), any())).thenReturn(Optional.of(drone));
+    when(deviceService.claimDroneForDispatch(drone.droneId())).thenReturn(true);
+    when(routingApiClient.estimateDroneRoute(any(), any(), any(), any(), any(), any()))
+        .thenReturn(new com.faind.domain.incident.dto.RouteEstimateResponse(new BigDecimal("1.0"), 60, "테스트 출발지"));
+
+    var result = service.autoDispatch(incidentId);
+
+    assertThat(result).isPresent();
+    assertThat(incident.getDroneDispatchSkipReason()).isNull();
   }
 
   // Firefly GCS 라이트 지도 뷰

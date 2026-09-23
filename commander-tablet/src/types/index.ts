@@ -47,6 +47,9 @@ export interface IncidentResponse {
   source: IncidentSource
   confirmedBy: string | null
   commanderId: string | null
+  // FR-25: 자동배정이 게이트에 막혀 건너뛰어진 사유 — null이면 배정됐거나 아직 시도되지 않은 것.
+  droneDispatchSkipReason: 'NO_FLY_ZONE' | 'UNSAFE_WEATHER' | 'NO_DRONE_AVAILABLE' | 'DRONE_CONTENDED' | string | null
+  droneDispatchSkippedAt: string | null
 }
 
 // FR-20: 후발대(소방차) 경로·ETA. 관할 소방서 고정 좌표 기준 근사치 — 실제 차량 위치 연동 전까지의 임시값.

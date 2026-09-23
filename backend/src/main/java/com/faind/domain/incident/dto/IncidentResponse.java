@@ -17,7 +17,9 @@ public record IncidentResponse(
     String status,
     String source,
     UUID confirmedBy,
-    UUID commanderId) {
+    UUID commanderId,
+    String droneDispatchSkipReason,
+    LocalDateTime droneDispatchSkippedAt) {
 
   public static IncidentResponse from(Incident incident) {
     return new IncidentResponse(
@@ -32,6 +34,8 @@ public record IncidentResponse(
         incident.getStatus().name(),
         incident.getSource().name(),
         incident.getConfirmedBy(),
-        incident.getCommanderId());
+        incident.getCommanderId(),
+        incident.getDroneDispatchSkipReason(),
+        incident.getDroneDispatchSkippedAt());
   }
 }

@@ -30,6 +30,13 @@ const STATUS_LABEL: Record<string, string> = {
   IN_PROGRESS: '진행중',
   CLOSED: '종료',
 }
+// FR-25: 자동배정이 건너뛰어진 사유를 지휘관이 이해할 수 있는 문장으로.
+const DRONE_SKIP_REASON_LABEL: Record<string, string> = {
+  NO_FLY_ZONE: '목표 좌표가 비행금지구역 안에 있어 드론이 배정되지 않았습니다.',
+  UNSAFE_WEATHER: '기상 조건(풍속·강수량)이 안전 기준을 벗어나 드론이 배정되지 않았습니다.',
+  NO_DRONE_AVAILABLE: '배정 가능한 드론이 없어 자동배정이 건너뛰어졌습니다.',
+  DRONE_CONTENDED: '가장 가까운 드론이 동시 배차 경합으로 다른 출동에 먼저 배정됐습니다.',
+}
 
 function AssignmentRow({
   userId,
@@ -207,7 +214,18 @@ export function IncidentMonitoringPage() {
                   <span>드론 정찰 (FR-26)</span>
                 </div>
                 <div className="wf-body">
-                  {data.droneDispatches.length === 0 && <div className="spinner-text">드론 출동 이력이 없습니다.</div>}
+                  {data.droneDispatches.length === 0 && data.incident.droneDispatchSkipReason && (
+                    <Banner
+                      kind="error"
+                      message={
+                        DRONE_SKIP_REASON_LABEL[data.incident.droneDispatchSkipReason] ??
+                        `드론이 배정되지 않았습니다 (${data.incident.droneDispatchSkipReason})`
+                      }
+                    />
+                  )}
+                  {data.droneDispatches.length === 0 && !data.incident.droneDispatchSkipReason && (
+                    <div className="spinner-text">드론 출동 이력이 없습니다.</div>
+                  )}
                   {data.droneDispatches.map((dispatch) => (
                     <DroneReconCard key={dispatch.dispatchId} dispatch={dispatch} judgments={judgments} />
                   ))}
