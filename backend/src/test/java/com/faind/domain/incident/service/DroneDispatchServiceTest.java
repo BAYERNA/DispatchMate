@@ -15,6 +15,7 @@ import com.faind.domain.incident.entity.IncidentType;
 import com.faind.domain.incident.repository.AiJudgmentLogRepository;
 import com.faind.domain.incident.repository.DroneDispatchRepository;
 import com.faind.domain.incident.repository.IncidentRepository;
+import com.faind.domain.noflyzone.service.NoFlyZoneService;
 import com.faind.integration.publicdata.PublicDataApiAdapter;
 import com.faind.integration.publicdata.WeatherSnapshot;
 import java.math.BigDecimal;
@@ -44,6 +45,7 @@ class DroneDispatchServiceTest {
   @Mock private DeviceService deviceService;
   @Mock private RoutingApiClient routingApiClient;
   @Mock private PublicDataApiAdapter publicDataApiAdapter;
+  @Mock private NoFlyZoneService noFlyZoneService;
 
   private DroneDispatchService service;
 
@@ -51,7 +53,7 @@ class DroneDispatchServiceTest {
   void setUp() {
     service = new DroneDispatchService(
         incidentRepository, droneDispatchRepository, aiJudgmentLogRepository, deviceService, routingApiClient,
-        publicDataApiAdapter, 10.0, 0.1);
+        publicDataApiAdapter, noFlyZoneService, 10.0, 0.1);
   }
 
   private Incident incident(UUID organizationId, LocalDateTime reportedAt) {
@@ -132,6 +134,21 @@ class DroneDispatchServiceTest {
     assertThat(result).isEmpty();
     verify(deviceService, never()).findNearestAvailableDrone(any(), any(), any());
     verify(incidentRepository, never()).findById(any());
+  }
+
+  // FAIND 사업계획서 비행 전 규제 체크: 목표 좌표가 비행금지구역 안이면 다른 조건과 무관하게 막는다.
+  @Test
+  void 목표_좌표가_비행금지구역_안이면_드론을_배정하지_않는다() {
+    UUID incidentId = UUID.randomUUID();
+    Incident incident = incidentWithCoordinates(ORG_A);
+    when(droneDispatchRepository.findByIncidentIdOrderByDispatchedAtDesc(incidentId)).thenReturn(List.of());
+    when(incidentRepository.findById(incidentId)).thenReturn(Optional.of(incident));
+    when(noFlyZoneService.isRestricted(incident.getLatitude(), incident.getLongitude())).thenReturn(true);
+
+    var result = service.autoDispatch(incidentId);
+
+    assertThat(result).isEmpty();
+    verify(deviceService, never()).findNearestAvailableDrone(any(), any(), any());
   }
 
   // FAIND 사업계획서 비행 전 안전 게이트: "기상 조건이 안전 기준을 벗어나면 다른 조건을 다

@@ -12,6 +12,7 @@ import com.faind.domain.incident.entity.Incident;
 import com.faind.domain.incident.repository.AiJudgmentLogRepository;
 import com.faind.domain.incident.repository.DroneDispatchRepository;
 import com.faind.domain.incident.repository.IncidentRepository;
+import com.faind.domain.noflyzone.service.NoFlyZoneService;
 import com.faind.global.error.BusinessException;
 import com.faind.global.error.ErrorCode;
 import com.faind.integration.publicdata.PublicDataApiAdapter;
@@ -43,6 +44,7 @@ public class DroneDispatchService {
   private final DeviceService deviceService;
   private final RoutingApiClient routingApiClient;
   private final PublicDataApiAdapter publicDataApiAdapter;
+  private final NoFlyZoneService noFlyZoneService;
   private final double maxWindSpeedMs;
   private final double maxPrecipitationMm;
 
@@ -53,6 +55,7 @@ public class DroneDispatchService {
       DeviceService deviceService,
       RoutingApiClient routingApiClient,
       PublicDataApiAdapter publicDataApiAdapter,
+      NoFlyZoneService noFlyZoneService,
       @Value("${faind.drone.weather-safety.max-wind-speed-ms:10.0}") double maxWindSpeedMs,
       @Value("${faind.drone.weather-safety.max-precipitation-mm:0.1}") double maxPrecipitationMm) {
     this.incidentRepository = incidentRepository;
@@ -61,6 +64,7 @@ public class DroneDispatchService {
     this.deviceService = deviceService;
     this.routingApiClient = routingApiClient;
     this.publicDataApiAdapter = publicDataApiAdapter;
+    this.noFlyZoneService = noFlyZoneService;
     this.maxWindSpeedMs = maxWindSpeedMs;
     this.maxPrecipitationMm = maxPrecipitationMm;
   }
@@ -78,6 +82,14 @@ public class DroneDispatchService {
 
     Incident incident = incidentRepository.findById(incidentId)
         .orElseThrow(() -> new BusinessException(ErrorCode.INCIDENT_NOT_FOUND));
+
+    // FAIND 사업계획서 비행 전 규제 체크: 목표 좌표가 비행금지구역(no_fly_zones) 반경 안이면
+    // 다른 조건과 무관하게 자동배정을 막는다 — 기상 게이트와 달리 "판단 근거 없음=허용"이 아니라
+    // 좌표가 있는데 구역 안이면 그 자체로 막는 규제 준수 게이트다.
+    if (noFlyZoneService.isRestricted(incident.getLatitude(), incident.getLongitude())) {
+      log.info("목표 좌표가 비행금지구역 안에 있어 FR-25 자동배정을 보류합니다 (incidentId={})", incidentId);
+      return Optional.empty();
+    }
 
     // FAIND 사업계획서 비행 전 안전 게이트: 기상 조건이 안전 기준을 벗어나면 다른 조건을 다
     // 충족해도 출동을 보류한다. 관측 자체를 못 가져온 경우(서비스키 미설정, API 실패 등)는
