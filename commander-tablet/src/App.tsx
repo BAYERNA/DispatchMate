@@ -8,6 +8,7 @@ import { ActiveIncidentsPage } from './pages/ActiveIncidentsPage'
 import { IncidentMonitoringPage } from './pages/IncidentMonitoringPage'
 import { ResponderDetailPage } from './pages/ResponderDetailPage'
 import { TrainingPage } from './pages/TrainingPage'
+import { DroneMapPage } from './pages/DroneMapPage'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -53,6 +54,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <ResponderDetailPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/drones/map"
+              element={
+                <RequireAuth>
+                  <DroneMapPage />
                 </RequireAuth>
               }
             />

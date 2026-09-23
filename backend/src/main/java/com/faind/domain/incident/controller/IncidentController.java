@@ -1,5 +1,6 @@
 package com.faind.domain.incident.controller;
 
+import com.faind.domain.incident.dto.ActiveDroneDispatchResponse;
 import com.faind.domain.incident.dto.AiJudgmentSummaryResponse;
 import com.faind.domain.incident.dto.AssignmentRequest;
 import com.faind.domain.incident.dto.AssignmentResponse;
@@ -160,6 +161,14 @@ public class IncidentController {
   public ResponseEntity<IncidentResponse> close(
       @CurrentUser AuthenticatedUser currentUser, @PathVariable UUID incidentId) {
     return ResponseEntity.ok(incidentService.close(currentUser.organizationId(), incidentId));
+  }
+
+  // Firefly GCS 라이트 지도 뷰: 지금 떠 있는 드론 전체 위치. 지휘관 태블릿/관리자 전용.
+  @GetMapping("/drone-dispatches/active")
+  @PreAuthorize("hasAnyRole('COMMANDER','ADMIN')")
+  public ResponseEntity<List<ActiveDroneDispatchResponse>> listActiveDroneDispatches(
+      @CurrentUser AuthenticatedUser currentUser) {
+    return ResponseEntity.ok(droneDispatchService.listActiveDispatches(currentUser.organizationId()));
   }
 
   // FR-26: 드론 도착 후 정찰 결과 콜백 (ai-server → Java 모놀리식)

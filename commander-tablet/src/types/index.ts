@@ -97,6 +97,23 @@ export interface DroneDispatchResponse {
   videoRef: string | null
 }
 
+// Firefly GCS 라이트 지도 뷰: 지금 떠 있는(EN_ROUTE/ON_SITE) 드론과 목표 사건 좌표.
+export interface ActiveDroneDispatchResponse {
+  dispatchId: string
+  incidentId: string
+  incidentNumber: string
+  incidentAddress: string | null
+  targetLatitude: number | null
+  targetLongitude: number | null
+  dispatchStatus: string
+  dispatchedAt: string
+  droneId: string
+  droneSerialNo: string | null
+  droneLatitude: number | null
+  droneLongitude: number | null
+  droneBatteryLevel: number | null
+}
+
 export interface MonitoringResponse {
   incident: IncidentResponse
   responders: ResponderStatusResponse[]

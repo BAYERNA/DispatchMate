@@ -5,6 +5,7 @@ import com.faind.domain.auth.service.AccountService;
 import com.faind.domain.device.dto.CameraResponse;
 import com.faind.domain.device.dto.DeviceRequest;
 import com.faind.domain.device.dto.DeviceResponse;
+import com.faind.domain.device.dto.DroneLocationResponse;
 import com.faind.domain.device.dto.NearestDroneResponse;
 import com.faind.domain.device.entity.Device;
 import com.faind.domain.device.entity.DeviceType;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -166,6 +168,13 @@ public class DeviceService {
   @Transactional
   public void releaseDrone(UUID droneId) {
     deviceRepository.findById(droneId).ifPresent(d -> d.updateStatus("NORMAL", d.getBatteryLevel()));
+  }
+
+  // Firefly GCS 라이트 지도 뷰: 여러 드론의 위치를 한 번에 조회(N+1 방지). 배차 여부는 이미
+  // 호출부(DroneDispatchService)가 drone_dispatches로 판단했으므로 여기서는 좌표만 붙여준다.
+  public Map<UUID, DroneLocationResponse> findDroneLocations(List<UUID> droneIds) {
+    return deviceRepository.findAllById(droneIds).stream()
+        .collect(Collectors.toMap(Device::getDeviceId, DroneLocationResponse::from));
   }
 
   // ADM-001 관리자 홈(FR-09) "기기 이상" 카드.

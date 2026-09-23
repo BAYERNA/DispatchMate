@@ -6,6 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.faind.domain.device.dto.DroneLocationResponse;
 import com.faind.domain.device.dto.NearestDroneResponse;
 import com.faind.domain.device.service.DeviceService;
 import com.faind.domain.incident.entity.DroneDispatch;
@@ -19,6 +20,7 @@ import com.faind.integration.publicdata.WeatherSnapshot;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 // 멀티테넌시 1단계 회귀 방지: FR-27 골든타임 통계가 호출한 조직의 출동에 배정된 드론만
 // 평균에 넣어야 한다 — 다른 조직의 드론 도착시간이 섞여 들어가면 안 된다.
@@ -66,6 +69,12 @@ class DroneDispatchServiceTest {
     DroneDispatch dispatch = new DroneDispatch(incidentId, UUID.randomUUID());
     dispatch.markOnSite(null);
     return dispatch;
+  }
+
+  private Incident incidentWithId(UUID incidentId, UUID organizationId) {
+    Incident incident = incidentWithCoordinates(organizationId);
+    ReflectionTestUtils.setField(incident, "incidentId", incidentId);
+    return incident;
   }
 
   @Test
@@ -172,5 +181,56 @@ class DroneDispatchServiceTest {
     service.autoDispatch(incidentId);
 
     verify(deviceService).findNearestAvailableDrone(any(), any(), any());
+  }
+
+  // Firefly GCS 라이트 지도 뷰
+  @Test
+  void 배차중인_드론이_없으면_빈_목록을_반환한다() {
+    when(droneDispatchRepository.findByStatusInOrderByDispatchedAtDesc(List.of("EN_ROUTE", "ON_SITE")))
+        .thenReturn(List.of());
+
+    var result = service.listActiveDispatches(ORG_A);
+
+    assertThat(result).isEmpty();
+    verify(incidentRepository, never()).findAllById(any());
+  }
+
+  @Test
+  void 다른_조직의_출동은_지도에서_제외한다() {
+    UUID incidentId = UUID.randomUUID();
+    DroneDispatch dispatch = new DroneDispatch(incidentId, UUID.randomUUID());
+    when(droneDispatchRepository.findByStatusInOrderByDispatchedAtDesc(List.of("EN_ROUTE", "ON_SITE")))
+        .thenReturn(List.of(dispatch));
+    when(incidentRepository.findAllById(any())).thenReturn(List.of(incidentWithId(incidentId, ORG_B)));
+    when(deviceService.findDroneLocations(any())).thenReturn(Map.of());
+
+    var result = service.listActiveDispatches(ORG_A);
+
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  void 배차중인_드론_위치와_목표_좌표를_함께_반환한다() {
+    UUID incidentId = UUID.randomUUID();
+    UUID droneId = UUID.randomUUID();
+    DroneDispatch dispatch = new DroneDispatch(incidentId, droneId);
+    Incident incident = incidentWithId(incidentId, ORG_A);
+    DroneLocationResponse droneLocation =
+        new DroneLocationResponse(droneId, "DRONE-001", new BigDecimal("37.6"), new BigDecimal("127.1"), 72, "DISPATCHED");
+    when(droneDispatchRepository.findByStatusInOrderByDispatchedAtDesc(List.of("EN_ROUTE", "ON_SITE")))
+        .thenReturn(List.of(dispatch));
+    when(incidentRepository.findAllById(any())).thenReturn(List.of(incident));
+    when(deviceService.findDroneLocations(any())).thenReturn(Map.of(droneId, droneLocation));
+
+    var result = service.listActiveDispatches(ORG_A);
+
+    assertThat(result).hasSize(1);
+    var response = result.get(0);
+    assertThat(response.incidentId()).isEqualTo(incidentId);
+    assertThat(response.targetLatitude()).isEqualTo(incident.getLatitude());
+    assertThat(response.droneId()).isEqualTo(droneId);
+    assertThat(response.droneSerialNo()).isEqualTo("DRONE-001");
+    assertThat(response.droneLatitude()).isEqualTo(new BigDecimal("37.6"));
+    assertThat(response.droneBatteryLevel()).isEqualTo(72);
   }
 }

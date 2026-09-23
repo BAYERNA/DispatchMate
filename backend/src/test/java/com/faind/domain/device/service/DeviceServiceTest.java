@@ -11,6 +11,7 @@ import com.faind.domain.device.repository.DeviceRepository;
 import com.faind.global.error.BusinessException;
 import com.faind.global.error.ErrorCode;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -86,5 +87,24 @@ class DeviceServiceTest {
 
     assertThat(response.deviceId()).isEqualTo(deviceId);
     assertThat(response.organizationId()).isEqualTo(ORG_A);
+  }
+
+  // Firefly GCS 라이트 지도 뷰: 드론 좌표를 한 번에 조회할 때, 이미 삭제됐거나 못 찾은 드론 id는
+  // 결과 맵에서 그냥 빠져야 한다(호출부가 null로 방어하는 전제).
+  @Test
+  void 드론_위치를_id_목록으로_한번에_조회한다() {
+    UUID droneId = UUID.randomUUID();
+    Device drone = new Device(
+        ORG_A, DeviceType.DRONE, "DRONE-001", null, null, new BigDecimal("37.5"), new BigDecimal("127.0"), 80, null);
+    ReflectionTestUtils.setField(drone, "deviceId", droneId);
+    UUID missingId = UUID.randomUUID();
+    when(deviceRepository.findAllById(List.of(droneId, missingId))).thenReturn(List.of(drone));
+
+    var result = deviceService.findDroneLocations(List.of(droneId, missingId));
+
+    assertThat(result).hasSize(1);
+    assertThat(result.get(droneId).serialNo()).isEqualTo("DRONE-001");
+    assertThat(result.get(droneId).batteryLevel()).isEqualTo(80);
+    assertThat(result).doesNotContainKey(missingId);
   }
 }

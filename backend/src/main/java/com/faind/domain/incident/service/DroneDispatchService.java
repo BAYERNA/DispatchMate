@@ -1,7 +1,9 @@
 package com.faind.domain.incident.service;
 
+import com.faind.domain.device.dto.DroneLocationResponse;
 import com.faind.domain.device.dto.NearestDroneResponse;
 import com.faind.domain.device.service.DeviceService;
+import com.faind.domain.incident.dto.ActiveDroneDispatchResponse;
 import com.faind.domain.incident.dto.DroneDispatchResponse;
 import com.faind.domain.incident.dto.RouteEstimateResponse;
 import com.faind.domain.incident.entity.AiJudgmentLog;
@@ -17,9 +19,11 @@ import com.faind.integration.publicdata.WeatherSnapshot;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.OptionalDouble;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -162,5 +166,49 @@ public class DroneDispatchService {
         })
         .filter(seconds -> seconds >= 0)
         .average();
+  }
+
+  // Firefly GCS 라이트 지도 뷰: 지금 떠 있는(EN_ROUTE/ON_SITE) 드론들의 위치를 목표 사건 좌표와
+  // 함께 반환한다. drone_dispatches는 organization_id가 없다 — averageDroneArrivalSeconds()와
+  // 같은 이유로, incident의 organizationId로 걸러야 다른 조직의 드론이 지도에 섞여 나오지 않는다.
+  public List<ActiveDroneDispatchResponse> listActiveDispatches(UUID organizationId) {
+    List<DroneDispatch> active =
+        droneDispatchRepository.findByStatusInOrderByDispatchedAtDesc(List.of("EN_ROUTE", "ON_SITE"));
+    if (active.isEmpty()) {
+      return List.of();
+    }
+
+    Map<UUID, Incident> incidentsInOrg = incidentRepository
+        .findAllById(active.stream().map(DroneDispatch::getIncidentId).distinct().toList())
+        .stream()
+        .filter(incident -> incident.getOrganizationId().equals(organizationId))
+        .collect(Collectors.toMap(Incident::getIncidentId, incident -> incident));
+
+    Map<UUID, DroneLocationResponse> drones =
+        deviceService.findDroneLocations(active.stream().map(DroneDispatch::getDroneId).distinct().toList());
+
+    return active.stream()
+        .filter(dispatch -> incidentsInOrg.containsKey(dispatch.getIncidentId()))
+        .map(dispatch -> toActiveDispatchResponse(dispatch, incidentsInOrg.get(dispatch.getIncidentId()), drones))
+        .toList();
+  }
+
+  private ActiveDroneDispatchResponse toActiveDispatchResponse(
+      DroneDispatch dispatch, Incident incident, Map<UUID, DroneLocationResponse> drones) {
+    DroneLocationResponse drone = drones.get(dispatch.getDroneId());
+    return new ActiveDroneDispatchResponse(
+        dispatch.getDispatchId(),
+        incident.getIncidentId(),
+        incident.getIncidentNumber(),
+        incident.getAddress(),
+        incident.getLatitude(),
+        incident.getLongitude(),
+        dispatch.getStatus(),
+        dispatch.getDispatchedAt(),
+        dispatch.getDroneId(),
+        drone == null ? null : drone.serialNo(),
+        drone == null ? null : drone.latitude(),
+        drone == null ? null : drone.longitude(),
+        drone == null ? null : drone.batteryLevel());
   }
 }

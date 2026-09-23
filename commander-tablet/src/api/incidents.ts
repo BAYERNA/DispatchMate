@@ -1,5 +1,6 @@
 import { apiRequest } from './client'
 import type {
+  ActiveDroneDispatchResponse,
   AiJudgmentSummaryResponse,
   AssignmentResponse,
   IncidentResponse,
@@ -31,6 +32,11 @@ export function getGroundRouteEstimate(incidentId: string): Promise<RouteEstimat
 // CMD-002 현장 모니터링 대시보드 전체 데이터
 export function getMonitoring(incidentId: string): Promise<MonitoringResponse> {
   return apiRequest<MonitoringResponse>(`/api/v1/incidents/${incidentId}/monitoring`)
+}
+
+// Firefly GCS 라이트 지도 뷰: 지금 떠 있는 드론 전체 위치 (역할=COMMANDER/ADMIN 전용, backend에서 강제)
+export function getActiveDroneDispatches(): Promise<ActiveDroneDispatchResponse[]> {
+  return apiRequest<ActiveDroneDispatchResponse[]>('/api/v1/incidents/drone-dispatches/active')
 }
 
 // CMD-002 드론 정찰 카드(FR-26) AI 판단 이력
