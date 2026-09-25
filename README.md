@@ -241,7 +241,7 @@ CI의 AI 의존성 점검은 정보성이고 npm 점검은 critical 기준이므
   Java 송신부도 Bearer 토큰을 전달하며, 토큰 미설정 시 인증을 생략하지 않습니다.
 - 공개 배포 전 TLS, 서비스 간 네트워크 격리, 외부 API 및 의존성 취약점 점검을 별도로 수행하세요.
   `/pre-analysis`, `/sop-match`는 내부 서비스용이며 공개망에 노출하지 마세요.
-- 실제 PostgreSQL에서 V7~V14 마이그레이션·계정 무효화·재알림/오프라인 명령 중복 방지 및 실제 카메라·SMS·음성·기관 연동을 검증하세요.
+- 실제 PostgreSQL에서 V7~V16 마이그레이션·계정 무효화·재알림/오프라인 명령 중복 방지 및 실제 카메라·SMS·음성·기관 연동을 검증하세요.
 
 ## 이번 변경 및 호환성
 
@@ -279,7 +279,7 @@ CI의 AI 의존성 점검은 정보성이고 npm 점검은 critical 기준이므
 
 새 API는 `POST /incidents/:incidentId/alerts/receipts` (`{ "alertIds": ["UUID"] }`)와
 `GET /incidents/:incidentId/alerts/delivery-status`입니다. 브라우저에서는 `/notify` 프록시를 사용합니다.
-배포 시 **backend Flyway V8~V14를 먼저 적용**한 뒤 알림 서버와 프론트를 갱신하세요.
+배포 시 **backend Flyway V8~V16을 먼저 적용**한 뒤 알림 서버와 프론트를 갱신하세요.
 구버전 알림 서버와의 혼합 운영, 실제 PostgreSQL의 동시 세션 잠금, 전체 서비스 E2E는 별도 검증이 필요합니다.
 기존 10분 미확인 위험경고의 1회 재알림 정책은 유지합니다. 대상자 중 일부만 확인한 경우의 추가 재알림 정책은 포함하지 않습니다.
 
@@ -348,6 +348,7 @@ PGLITE_ROOT=/tmp/dispatchmate-db-check/node_modules/@electric-sql/pglite node te
 ### V11 현장 안전·운영 인텔리전스
 
 - **MAYDAY·PAR:** 대원 원터치 긴급신호, 지휘 확인 전 반복 경보, 30~1800초 인원점검과 미응답 자동 위험신호를 제공합니다.
+- **통신 건전성:** 대원 앱이 15초마다 heartbeat와 WebSocket·네트워크 상태를 보고합니다. 지휘 화면은 정상·저하·단절을 구분하고, 서버는 45초 이상 미수신 시 멱등 안전경보를 생성합니다. 브라우저가 RSSI를 제공하지 않는 경우에는 연결·RTT·다운링크와 heartbeat 최신성만으로 판단합니다.
 - **영속 작업 큐·푸시:** PUSH/SMS/VOICE/기관 전송은 `durable_jobs`에서 멱등 키, 지수 백오프, 최대 재시도와 DEAD 상태를 관리합니다. `PUSH_GATEWAY_URL`은 FCM/APNs/Web Push 중계 어댑터 주소입니다.
 - **경로·실내 위치:** GPS 경로·ETA와 위험요소, BLE/UWB/GPS/수동 위치를 저장합니다. 내장 ETA는 직선거리 기반 참고값이며 실제 도로 통제 경로는 외부 라우팅 연동이 필요합니다.
 - **장비·의료:** QR/RFID 장비 생명주기와 반출 스캔, 병원 수용상태와 환자 인계 데이터를 연결합니다.
@@ -358,7 +359,7 @@ PGLITE_ROOT=/tmp/dispatchmate-db-check/node_modules/@electric-sql/pglite node te
 
 Web Push는 대원 화면의 “종료 상태 푸시 활성화”에서 서비스 워커를 등록합니다. 빌드 시 `VITE_WEB_PUSH_PUBLIC_KEY`가 필요합니다. Prometheus 스크레이퍼는 인증 토큰과 함께 `GET /operations/metrics/prometheus`를 호출할 수 있습니다. 외부 계약 전에는 `node scripts/mock-operations-gateway.mjs` 또는 `scripts/test-mock-gateway.sh`로 PUSH/SMS/음성/기관/경로 어댑터 형식을 점검합니다.
 
-외부 푸시, 도로 라우팅, BLE/UWB, RFID 리더, 병원 시스템은 공급자별 계약이 없으므로 고정 설정 어댑터와 실패 상태까지만 제공합니다. URL·토큰·장비가 없으면 성공으로 처리하지 않습니다. V14 적용 후 새 알림 서버와 세 프론트엔드를 함께 배포하세요.
+외부 푸시, 도로 라우팅, BLE/UWB, RFID 리더, 병원 시스템은 공급자별 계약이 없으므로 고정 설정 어댑터와 실패 상태까지만 제공합니다. URL·토큰·장비가 없으면 성공으로 처리하지 않습니다. V16 적용 후 새 알림 서버와 세 프론트엔드를 함께 배포하세요.
 
 ### V12 복원력·거버넌스·연합 운영
 
@@ -402,7 +403,7 @@ V12의 실제 Vault/KMS 조회, mTLS handshake, BIM 렌더러, 음성 인식 공
 - **감사 WORM manifest:** hash-chain 범위, head hash, 외부 artifact URI와 SHA-256을 기록해 외부 WORM 복제를 검증할 수 있습니다. 저장소 자체가 WORM 스토리지를 대신하지 않습니다.
 - **인증서 인벤토리:** 서비스별 인증서 fingerprint, 발급자와 만료일을 기록합니다. `scripts/check-certificate-expiry.sh`로 배포 인증서가 지정 기간 안에 만료되는지 차단할 수 있습니다.
 
-CI는 V1~V14 마이그레이션과 58개 DB·현장 통합 시나리오, Compose 설정, 셸 문법 및 운영 환경 Chaos 차단을 검증합니다.
+CI는 V1~V16 마이그레이션과 62개 DB·현장 통합 시나리오, Compose 설정, 셸 문법 및 운영 환경 Chaos 차단을 검증합니다.
 
 ```bash
 # 로컬 운영 보증 검사
@@ -427,6 +428,19 @@ CERTIFICATE_WARNING_DAYS=30 ./scripts/check-certificate-expiry.sh certs/service.
 - **지휘 의사결정 보드:** 활성 MAYDAY, 차단된 목표, 공급자 장애를 근거로 구조·재할당·대체통신 권고를 생성합니다. 권고는 자동 명령이 아니며 지휘관 승인·거절 사유를 반드시 저장합니다.
 - **보안·KPI:** 기기 변경·대량 조회·권한 상승·서명 실패 등의 이상징후와 신고 후 첫 상태수신, 알림 전달, MAYDAY 확인, 사건 지속시간 KPI 스냅샷을 저장합니다.
 
-CI는 V1~V14 마이그레이션과 58개 DB·현장 통합 시나리오를 검증합니다. 실시간 음성 인식, 실제 IFC 파서, 객체 스토리지 chunk 업로드, 드론 비행제어와 공공기관 API 호출은 공급자 SDK/계약이 연결되어야 하며, 현재 어댑터는 이를 성공으로 위장하지 않습니다.
+### V15 통신 건전성
+
+- 대원 단말의 WebSocket·온라인 여부·네트워크 정보를 15초 heartbeat로 저장합니다.
+- 지휘 화면은 마지막 heartbeat가 45초를 넘으면 `OFFLINE`, 소켓 단절이나 약한 RSSI는 `DEGRADED`로 표시합니다.
+- 자동화 워커는 단절된 대원에게 멱등 `RISK_WARNING`을 생성하고 통신 상태 전환을 사고 타임라인에 남깁니다.
+
+### V16 통신 복구와 지휘 명령 확인
+
+- 배정 후 45초 동안 heartbeat가 한 번도 없는 대원도 통신 미연결로 감지하며, 복구 시 지휘관에게 별도 상태 알림을 보냅니다.
+- 통신 상태는 연속 관측을 사용해 `RECOVERING`을 거친 뒤 정상으로 전환하므로 일시적인 네트워크 흔들림이 즉시 정상·저하를 반복하지 않습니다.
+- 개인·전체 지휘 명령은 대원별 `PENDING → RECEIVED → READ → ACCEPTED/REJECTED → COMPLETED` 수명주기를 저장합니다.
+- 확인 제한시간을 넘긴 미응답 명령은 발령자에게 한 번만 에스컬레이션하며, 지휘 화면에서 대원별 상태와 에스컬레이션 여부를 확인합니다.
+
+CI는 V1~V16 마이그레이션과 62개 DB·현장 통합 시나리오를 검증합니다. 실시간 음성 인식, 실제 IFC 파서, 객체 스토리지 chunk 업로드, 드론 비행제어와 공공기관 API 호출은 공급자 SDK/계약이 연결되어야 하며, 현재 어댑터는 이를 성공으로 위장하지 않습니다.
 
 2026-09-19 코드 점검의 근거, 재현 결과, 미검증 범위는 [CODE_REVIEW.md](CODE_REVIEW.md)를 참고하세요.

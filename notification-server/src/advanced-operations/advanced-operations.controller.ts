@@ -23,6 +23,8 @@ export class AdvancedOperationsController {
   route(@Param('incidentId', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser, @Body() body: any) { return this.service.route(id, user, body); }
   @Post('incidents/:incidentId/positions') @UseGuards(IncidentAccessGuard)
   position(@Param('incidentId', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser, @Body() body: any) { return this.service.position(id, user, body); }
+  @Post('incidents/:incidentId/communications/heartbeat') @UseGuards(IncidentAccessGuard)
+  communicationHeartbeat(@Param('incidentId', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser, @Body() body: any) { return this.service.communicationHeartbeat(id, user, body); }
   @Post('resource-tags') tag(@CurrentUser() user: AuthenticatedUser, @Body() body: any) { return this.service.addTag(user, body); }
   @Post('resource-tags/:tagValue/scan') scan(@Param('tagValue') value: string, @CurrentUser() user: AuthenticatedUser, @Body() body: any) { return this.service.scanTag(user, value, body); }
   @Post('hospitals') hospital(@CurrentUser() user: AuthenticatedUser, @Body() body: any) { return this.service.hospital(user, body); }

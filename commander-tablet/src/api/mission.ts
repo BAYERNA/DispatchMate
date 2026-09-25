@@ -1,5 +1,5 @@
 import { notifyRequest } from './client'
-export interface MissionControl {commands:any[];sop:any[];resources:any[];inventory:any[];floors:any[];markers:any[];packets:any[];channelAttempts:any[]}
+export interface MissionControl {commands:any[];commandReceipts:any[];sop:any[];resources:any[];inventory:any[];floors:any[];markers:any[];packets:any[];channelAttempts:any[]}
 export const getMission=(id:string)=>notifyRequest<MissionControl>(`/incidents/${id}/mission-control`)
 export const createCommand=(id:string,body:unknown)=>notifyRequest(`/incidents/${id}/commands`,{method:'POST',body})
 export const commandStatus=(id:string,status:string)=>notifyRequest(`/commands/${id}/status`,{method:'PATCH',body:{status}})
