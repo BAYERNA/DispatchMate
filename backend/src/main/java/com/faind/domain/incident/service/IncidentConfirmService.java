@@ -29,7 +29,7 @@ public class IncidentConfirmService {
   @Transactional
   public IncidentResponse confirm(UUID incidentId, AuthenticatedUser currentUser) {
     requireAdmin(currentUser);
-    Incident incident = findIncident(incidentId);
+    Incident incident = findIncident(currentUser.organizationId(), incidentId);
     incident.confirmDispatch(currentUser.userId());
     // ADM-001 annot#2: "이 순간 비로소 IncidentCreated 이벤트가 발행되어 사전분석·드론출동이 시작됨"
     eventPublisher.publishEvent(new IncidentCreatedEvent(incidentId, true));
@@ -39,7 +39,7 @@ public class IncidentConfirmService {
   @Transactional
   public IncidentResponse rejectAsFalsePositive(UUID incidentId, AuthenticatedUser currentUser) {
     requireAdmin(currentUser);
-    Incident incident = findIncident(incidentId);
+    Incident incident = findIncident(currentUser.organizationId(), incidentId);
     incident.rejectAsFalsePositive(currentUser.userId());
     return IncidentResponse.from(incident);
   }
@@ -50,7 +50,13 @@ public class IncidentConfirmService {
     }
   }
 
-  private Incident findIncident(UUID incidentId) {
-    return incidentRepository.findById(incidentId).orElseThrow(() -> new BusinessException(ErrorCode.INCIDENT_NOT_FOUND));
+  // AI_SUSPECTED 확정/오탐 처리도 다른 조직의 incident_id를 추측한 호출을 막는다(멀티테넌시 1단계).
+  private Incident findIncident(UUID organizationId, UUID incidentId) {
+    Incident incident = incidentRepository.findById(incidentId)
+        .orElseThrow(() -> new BusinessException(ErrorCode.INCIDENT_NOT_FOUND));
+    if (!incident.getOrganizationId().equals(organizationId)) {
+      throw new BusinessException(ErrorCode.INCIDENT_NOT_FOUND);
+    }
+    return incident;
   }
 }

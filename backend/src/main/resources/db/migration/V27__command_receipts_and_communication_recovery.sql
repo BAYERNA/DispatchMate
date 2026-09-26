@@ -1,4 +1,4 @@
--- DispatchMate V16: per-responder command lifecycle and communication recovery state.
+-- DispatchMate V27: per-responder command lifecycle and communication recovery state.
 
 ALTER TABLE incident_commands
   ADD COLUMN acknowledgement_due_at timestamptz NOT NULL DEFAULT (now() + interval '60 seconds');

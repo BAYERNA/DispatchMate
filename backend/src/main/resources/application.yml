@@ -36,8 +36,9 @@ management:
     web:
       exposure:
         # metrics/prometheus는 PUBLIC_ENDPOINTS에 없어서 SecurityConfig 기본 규칙(anyRequest
-        # authenticated)에 걸려 로그인 없이는 못 본다 — CircuitBreaker 상태를 노출하는 엔드포인트라
-        # health와 달리 인증 없이 열어줄 이유가 없다.
+        # authenticated)에 걸린다 — CircuitBreaker 상태를 노출하는 엔드포인트라 health와 달리
+        # 로그인 없이는 못 본다. Prometheus 서버는 InternalServiceAuthFilter가 보는
+        # /actuator/prometheus 전용 내부 토큰으로만 스크레이핑한다(SecurityConfig 참고).
         include: health,info,metrics,prometheus
   endpoint:
     health:
@@ -68,6 +69,13 @@ faind:
   statistics:
     # FR-27 "기존 평균 출동시간" 기준값(초). 실서비스 단계에서는 소방청 통계 API로 대체.
     existing-average-dispatch-seconds: 492
+  drone:
+    weather-safety:
+      # FAIND 사업계획서: "기상 조건이 사전 설정된 비행 안전 기준을 벗어나면, 다른 조건을 다
+      # 충족해도 출동을 보류한다." 일반 소형 드론의 통상 안전 운용 한계치를 기본값으로 둔다 —
+      # 조직별로 다르면 나중에 조직 단위 설정으로 옮길 수 있다.
+      max-wind-speed-ms: 10.0
+      max-precipitation-mm: 0.1
   integration:
     ai-server:
       base-url: ${AI_SERVER_BASE_URL:http://localhost:8001}

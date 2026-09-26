@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { AlertsService } from '../alerts/alerts.service';
 import { Alert } from '../alerts/entities/alert.entity';
 import { AuthenticatedUser } from '../auth/authenticated-user.interface';
+import { OrganizationScopeService } from '../common/organization-scope/organization-scope.service';
 
 @Injectable()
 export class AdvancedOperationsService {
@@ -12,6 +13,7 @@ export class AdvancedOperationsService {
     @InjectRepository(Alert) private readonly db: Repository<Alert>,
     private readonly alerts: AlertsService,
     private readonly config: ConfigService,
+    private readonly orgScope: OrganizationScopeService,
   ) {}
 
   private operator(user: AuthenticatedUser) {
@@ -74,6 +76,9 @@ export class AdvancedOperationsService {
   async maydayStatus(id: string, user: AuthenticatedUser, status: string, note?: string) {
     this.operator(user);
     if (!['ACKNOWLEDGED', 'RESOLVED', 'CANCELLED'].includes(status)) throw new BadRequestException();
+    const signal = (await this.db.query(`SELECT incident_id FROM emergency_signals WHERE signal_id=$1`, [id]))[0];
+    if (!signal) throw new NotFoundException();
+    await this.orgScope.assertIncident(user, signal.incident_id);
     const rows = await this.db.query(`UPDATE emergency_signals SET status=$2::varchar,acknowledged_by=CASE WHEN $2::varchar='ACKNOWLEDGED' THEN $3::uuid ELSE acknowledged_by END,acknowledged_at=CASE WHEN $2::varchar='ACKNOWLEDGED' THEN now() ELSE acknowledged_at END,resolved_by=CASE WHEN $2::varchar IN ('RESOLVED','CANCELLED') THEN $3::uuid ELSE resolved_by END,resolved_at=CASE WHEN $2::varchar IN ('RESOLVED','CANCELLED') THEN now() ELSE resolved_at END,resolution_note=COALESCE($4::text,resolution_note) WHERE signal_id=$1 AND status NOT IN ('RESOLVED','CANCELLED') RETURNING signal_id AS "signalId",status`, [id, status, user.userId, note?.trim() || null]);
     if (!rows.length) throw new NotFoundException();
     return rows[0];
@@ -90,6 +95,7 @@ export class AdvancedOperationsService {
     if (!['SAFE', 'NEEDS_HELP'].includes(body.response)) throw new BadRequestException();
     const sessions = await this.db.query(`SELECT incident_id FROM accountability_sessions WHERE session_id=$1 AND status='OPEN' AND deadline_at>now()`, [id]);
     if (!sessions.length) throw new BadRequestException('응답 가능한 인원점검이 아닙니다.');
+    await this.orgScope.assertIncident(user, sessions[0].incident_id);
     await this.permission(sessions[0].incident_id, user, 'PAR_RESPOND');
     const row = (await this.db.query(`INSERT INTO accountability_responses(session_id,user_id,response,location) VALUES($1,$2,$3,$4::jsonb) ON CONFLICT(session_id,user_id) DO UPDATE SET response=EXCLUDED.response,location=EXCLUDED.location,responded_at=now() RETURNING session_id AS "sessionId",response`, [id, user.userId, body.response, JSON.stringify(body.location ?? {})]))[0];
     if (body.response === 'NEEDS_HELP') await this.mayday(sessions[0].incident_id, user, { location: body.location });
@@ -199,6 +205,9 @@ export class AdvancedOperationsService {
   async objectiveStatus(id: string, user: AuthenticatedUser, status: string) {
     this.operator(user);
     if (!['OPEN', 'IN_PROGRESS', 'COMPLETED', 'BLOCKED', 'CANCELLED'].includes(status)) throw new BadRequestException();
+    const objective = (await this.db.query(`SELECT incident_id FROM tactical_objectives WHERE objective_id=$1`, [id]))[0];
+    if (!objective) throw new NotFoundException();
+    await this.orgScope.assertIncident(user, objective.incident_id);
     const rows = await this.db.query(`UPDATE tactical_objectives SET status=$2,updated_at=now() WHERE objective_id=$1 RETURNING objective_id AS "objectiveId",status`, [id, status]);
     if (!rows.length) throw new NotFoundException();
     return rows[0];

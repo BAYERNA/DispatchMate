@@ -1,0 +1,10 @@
+aws_region      = "ap-northeast-2"
+environment     = "portfolio"
+image_tag       = "replace-with-commit-sha"
+deploy_services = false
+desired_count   = 1
+enable_data_exports = false
+# 03:00 KST (18:00 UTC)
+analytics_export_schedule = "cron(0 18 * * ? *)"
+analytics_export_lookback_days = 7
+analytics_retention_days = 365

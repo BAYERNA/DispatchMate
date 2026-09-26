@@ -26,6 +26,7 @@ repositories {
 ext {
 	set('resilience4jVersion', '2.2.0')
 	set('springdocVersion', '2.6.0')
+	set('testcontainersVersion', '1.20.4')
 }
 
 dependencies {
@@ -55,6 +56,14 @@ dependencies {
 	// API docs
 	implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocVersion}"
 
+	// OpenTelemetry — Prometheus/Grafana(수치)는 이미 있지만 "요청 하나가 backend→ai-server→
+	// notification-server를 거치며 어디서 느려지는지"는 못 봤다. 공식 OTel Spring Boot 스타터는
+	// OTEL_EXPORTER_OTLP_ENDPOINT가 없거나 수집기가 안 떠 있어도 익스포트만 조용히 실패할 뿐
+	// (백그라운드 배치 전송, 앱 기동을 막지 않음) 안전하다 — docker-compose.yml에 새로 추가한
+	// Jaeger가 없는 로컬 개발 환경에서도 기동에 영향이 없다.
+	implementation platform('io.opentelemetry.instrumentation:opentelemetry-instrumentation-bom:2.11.0')
+	implementation 'io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter'
+
 	// Actuator (health checks per architecture diagram)
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	// Prometheus 포맷 메트릭 노출 — resilience4j-spring-boot3가 CircuitBreaker 상태를 자동으로
@@ -68,8 +77,17 @@ dependencies {
 
 	// Test
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testImplementation 'org.springframework.boot:spring-boot-testcontainers'
 	testImplementation 'org.springframework.security:spring-security-test'
+	testImplementation 'org.testcontainers:junit-jupiter'
+	testImplementation 'org.testcontainers:postgresql'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+	// Testcontainers — Mockito 단위테스트만으로는 못 잡는, "실제 Postgres에 Flyway가 붙는지"
+	// 자체를 검증한다(V15에서 발견한 VARCHAR 길이 버그 같은 건 스키마가 진짜로 있어야 드러난다).
+	testImplementation platform("org.testcontainers:testcontainers-bom:${testcontainersVersion}")
+	testImplementation 'org.testcontainers:junit-jupiter'
+	testImplementation 'org.testcontainers:postgresql'
 }
 
 tasks.named('test') {

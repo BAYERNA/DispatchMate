@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,26 +47,27 @@ public class StatisticsService {
     this.existingAverageDispatchSeconds = existingAverageDispatchSeconds;
   }
 
-  public StatisticsSummaryResponse getSummary() {
-    long totalJudgments = aiJudgmentLogQueryRepository.count();
+  public StatisticsSummaryResponse getSummary(UUID organizationId) {
+    long totalJudgments = aiJudgmentLogQueryRepository.count(organizationId);
 
-    BigDecimal sopAccuracy = aiJudgmentLogQueryRepository.averageConfidenceScore("REPORT_SOP_MATCH");
+    BigDecimal sopAccuracy = aiJudgmentLogQueryRepository.averageConfidenceScore("REPORT_SOP_MATCH", organizationId);
     double sopMatchAccuracyPercent = sopAccuracy == null ? 0.0 : sopAccuracy.doubleValue();
 
-    ReviewStatsResponse reviewStats = reportService.getReviewStats();
+    ReviewStatsResponse reviewStats = reportService.getReviewStats(organizationId);
     double reviewCompletionRatePercent = reviewStats.completionRate() * 100;
 
     double averageJudgmentSeconds = averagePreAnalysisSeconds();
 
-    java.util.OptionalDouble droneAvgSeconds = droneDispatchService.averageDroneArrivalSeconds();
+    java.util.OptionalDouble droneAvgSeconds = droneDispatchService.averageDroneArrivalSeconds(organizationId);
     GoldenTimeStatsResponse goldenTime = GoldenTimeStatsResponse.of(
         existingAverageDispatchSeconds, droneAvgSeconds.isPresent() ? droneAvgSeconds.getAsDouble() : null);
 
-    long cctvDetectionCount = aiJudgmentLogQueryRepository.countByJudgmentType("CCTV_DETECTION");
-    long manualCctvDetectionCount = aiJudgmentLogQueryRepository.countByJudgmentTypeAndDetectionSource("CCTV_DETECTION", "MANUAL");
+    long cctvDetectionCount = aiJudgmentLogQueryRepository.countByJudgmentType("CCTV_DETECTION", organizationId);
+    long manualCctvDetectionCount =
+        aiJudgmentLogQueryRepository.countByJudgmentTypeAndDetectionSource("CCTV_DETECTION", "MANUAL", organizationId);
     Double manualDetectionRatioPercent =
         cctvDetectionCount == 0 ? null : round1(manualCctvDetectionCount * 100.0 / cctvDetectionCount);
-    BigDecimal avgDangerScore = aiJudgmentLogQueryRepository.averageDangerScore("CCTV_DETECTION");
+    BigDecimal avgDangerScore = aiJudgmentLogQueryRepository.averageDangerScore("CCTV_DETECTION", organizationId);
     Double averageCctvDangerScore = avgDangerScore == null ? null : round1(avgDangerScore.doubleValue());
 
     return new StatisticsSummaryResponse(
@@ -74,9 +76,9 @@ public class StatisticsService {
         round1(reviewCompletionRatePercent),
         round1(averageJudgmentSeconds),
         goldenTime,
-        monthlyJudgmentCounts(),
-        judgmentTypeFrequency(),
-        recentJudgments(),
+        monthlyJudgmentCounts(organizationId),
+        judgmentTypeFrequency(organizationId),
+        recentJudgments(organizationId),
         cctvDetectionCount,
         manualDetectionRatioPercent,
         averageCctvDangerScore);
@@ -89,11 +91,11 @@ public class StatisticsService {
     return 0.0;
   }
 
-  private List<LabeledCount> monthlyJudgmentCounts() {
+  private List<LabeledCount> monthlyJudgmentCounts(UUID organizationId) {
     LocalDateTime since = LocalDateTime.now().minusMonths(MONTHLY_TREND_MONTHS - 1L).withDayOfMonth(1)
         .withHour(0).withMinute(0).withSecond(0).withNano(0);
     Map<String, Long> counts = new TreeMap<>();
-    for (AiJudgmentLog log : aiJudgmentLogQueryRepository.findByCreatedAtAfterOrderByCreatedAtAsc(since)) {
+    for (AiJudgmentLog log : aiJudgmentLogQueryRepository.findByCreatedAtAfterOrderByCreatedAtAsc(since, organizationId)) {
       String key = "%d-%02d".formatted(log.getCreatedAt().getYear(), log.getCreatedAt().getMonthValue());
       counts.merge(key, 1L, Long::sum);
     }
@@ -107,16 +109,16 @@ public class StatisticsService {
     return java.time.Month.of(month).getDisplayName(TextStyle.SHORT, Locale.KOREAN);
   }
 
-  private List<LabeledCount> judgmentTypeFrequency() {
-    return aiJudgmentLogQueryRepository.countGroupedByJudgmentType().stream()
+  private List<LabeledCount> judgmentTypeFrequency(UUID organizationId) {
+    return aiJudgmentLogQueryRepository.countGroupedByJudgmentType(organizationId).stream()
         .map(row -> new LabeledCount((String) row[0], (Long) row[1]))
         .sorted(Comparator.comparingLong(LabeledCount::count).reversed())
         .toList();
   }
 
-  private List<RecentJudgmentItem> recentJudgments() {
+  private List<RecentJudgmentItem> recentJudgments(UUID organizationId) {
     return aiJudgmentLogQueryRepository
-        .findByCreatedAtAfterOrderByCreatedAtAsc(LocalDateTime.now().minusMonths(1))
+        .findByCreatedAtAfterOrderByCreatedAtAsc(LocalDateTime.now().minusMonths(1), organizationId)
         .stream()
         .sorted(Comparator.comparing(AiJudgmentLog::getCreatedAt).reversed())
         .limit(RECENT_JUDGMENT_LIMIT)

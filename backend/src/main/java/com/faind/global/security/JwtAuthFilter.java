@@ -45,8 +45,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             || user.getTokenVersion() != (version == null ? 0 : version.longValue())) {
           throw new JwtException("폐기된 세션입니다.");
         }
+        // organizationId는 JWT claim이 아니라 매 요청마다 DB에서 다시 읽는다 — role/tokenVersion을
+        // 이미 여기서 재검증하는 것과 같은 이유(폐기된 세션·변경된 소속을 즉시 반영).
+        var authenticatedUser = new AuthenticatedUser(user.getUserId(), role, user.getOrganizationId());
         var authentication = new UsernamePasswordAuthenticationToken(
-            userId, null, List.of(new SimpleGrantedAuthority("ROLE_" + role)));
+            authenticatedUser, null, List.of(new SimpleGrantedAuthority("ROLE_" + role)));
         SecurityContextHolder.getContext().setAuthentication(authentication);
       } catch (JwtException | IllegalArgumentException ignored) {
         SecurityContextHolder.clearContext();

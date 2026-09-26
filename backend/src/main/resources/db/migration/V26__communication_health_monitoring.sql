@@ -1,4 +1,4 @@
--- DispatchMate V15: incident communication heartbeat and degraded/offline monitoring.
+-- DispatchMate V26: incident communication heartbeat and degraded/offline monitoring.
 
 CREATE TABLE incident_communication_heartbeats (
   incident_id uuid NOT NULL REFERENCES incidents(incident_id) ON DELETE CASCADE,

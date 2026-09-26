@@ -47,6 +47,9 @@ export interface IncidentResponse {
   source: IncidentSource
   confirmedBy: string | null
   commanderId: string | null
+  // FR-25: 자동배정이 게이트에 막혀 건너뛰어진 사유 — null이면 배정됐거나 아직 시도되지 않은 것.
+  droneDispatchSkipReason: 'NO_FLY_ZONE' | 'UNSAFE_WEATHER' | 'NO_DRONE_AVAILABLE' | 'DRONE_CONTENDED' | string | null
+  droneDispatchSkippedAt: string | null
 }
 
 // FR-20: 후발대(소방차) 경로·ETA. 관할 소방서 고정 좌표 기준 근사치 — 실제 차량 위치 연동 전까지의 임시값.
@@ -95,6 +98,23 @@ export interface DroneDispatchResponse {
   arrivedAt: string | null
   status: string
   videoRef: string | null
+}
+
+// Firefly GCS 라이트 지도 뷰: 지금 떠 있는(EN_ROUTE/ON_SITE) 드론과 목표 사건 좌표.
+export interface ActiveDroneDispatchResponse {
+  dispatchId: string
+  incidentId: string
+  incidentNumber: string
+  incidentAddress: string | null
+  targetLatitude: number | null
+  targetLongitude: number | null
+  dispatchStatus: string
+  dispatchedAt: string
+  droneId: string
+  droneSerialNo: string | null
+  droneLatitude: number | null
+  droneLongitude: number | null
+  droneBatteryLevel: number | null
 }
 
 export interface MonitoringResponse {

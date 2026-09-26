@@ -7,12 +7,14 @@ import com.faind.domain.incident.dto.CctvDetectionRequest;
 import com.faind.domain.incident.entity.AiJudgmentLog;
 import com.faind.domain.incident.entity.Incident;
 import com.faind.domain.incident.entity.IncidentStatus;
+import com.faind.domain.incident.event.CctvSuspectedDetectedEvent;
 import com.faind.domain.incident.repository.AiJudgmentLogRepository;
 import com.faind.domain.incident.repository.IncidentRepository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,16 +28,19 @@ public class CctvDetectionService {
   private final AiJudgmentLogRepository aiJudgmentLogRepository;
   private final IncidentNumberGenerator incidentNumberGenerator;
   private final DeviceService deviceService;
+  private final ApplicationEventPublisher eventPublisher;
 
   public CctvDetectionService(
       IncidentRepository incidentRepository,
       AiJudgmentLogRepository aiJudgmentLogRepository,
       IncidentNumberGenerator incidentNumberGenerator,
-      DeviceService deviceService) {
+      DeviceService deviceService,
+      ApplicationEventPublisher eventPublisher) {
     this.incidentRepository = incidentRepository;
     this.aiJudgmentLogRepository = aiJudgmentLogRepository;
     this.incidentNumberGenerator = incidentNumberGenerator;
     this.deviceService = deviceService;
+    this.eventPublisher = eventPublisher;
   }
 
   // detectionSource: "AUTO"(ai-server CCTV 폴링, /cctv-detections) | "MANUAL"(ADM-010 관제실
@@ -46,6 +51,7 @@ public class CctvDetectionService {
     LocalDateTime detectedAt = request.detectedAt() != null ? request.detectedAt() : LocalDateTime.now();
 
     Incident incident = Incident.cctvSuspected(
+        camera.organizationId(),
         incidentNumberGenerator.next(),
         request.addressHint() != null ? request.addressHint() : camera.serialNo(),
         camera.latitude(),
@@ -57,6 +63,10 @@ public class CctvDetectionService {
         "CCTV_DETECTION", incident.getIncidentId(), null, request.cameraDeviceId(), request.confidenceScore(),
         request.dangerScore(), detectionSource, request.snapshotBase64(), request.summary());
     aiJudgmentLogRepository.save(log);
+
+    // FR-24/25 선제적 드론 배정: 관리자 확인을 기다리지 않고 정찰용 드론을 미리 띄운다 — incident
+    // 상태는 여전히 AI_SUSPECTED로 남는다(NFR-08 위반 아님).
+    eventPublisher.publishEvent(new CctvSuspectedDetectedEvent(incident.getIncidentId()));
 
     return incident.getIncidentId();
   }

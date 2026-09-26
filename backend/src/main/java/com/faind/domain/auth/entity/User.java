@@ -20,6 +20,10 @@ public class User {
   @Column(name = "user_id")
   private UUID userId;
 
+  // 멀티테넌시 1단계(V17): 이 사용자가 속한 조직. badge_number는 이제 조직 안에서만 유일하다.
+  @Column(name = "organization_id", nullable = false)
+  private UUID organizationId;
+
   @Column(nullable = false, length = 50)
   private String name;
 
@@ -57,7 +61,8 @@ public class User {
 
   protected User() {}
 
-  public User(String name, String role, String badgeNumber, String team, String phone, String passwordHash) {
+  public User(UUID organizationId, String name, String role, String badgeNumber, String team, String phone, String passwordHash) {
+    this.organizationId = organizationId;
     this.name = name;
     this.role = role;
     this.badgeNumber = badgeNumber;
@@ -99,12 +104,23 @@ public class User {
     this.updatedAt = LocalDateTime.now();
   }
 
+  // deactivate()와 짝을 이루는 되돌리기 — 세션 무효화(tokenVersion 증가)는 비활성화 시점에
+  // 이미 끝났으므로 다시 건드릴 필요 없다.
+  public void activate() {
+    this.status = "ACTIVE";
+    this.updatedAt = LocalDateTime.now();
+  }
+
   public boolean isAdmin() {
     return "ADMIN".equals(role);
   }
 
   public UUID getUserId() {
     return userId;
+  }
+
+  public UUID getOrganizationId() {
+    return organizationId;
   }
 
   public String getName() {

@@ -1,5 +1,6 @@
 package com.faind.domain.incident.controller;
 
+import com.faind.domain.incident.dto.ActiveDroneDispatchResponse;
 import com.faind.domain.incident.dto.AiJudgmentSummaryResponse;
 import com.faind.domain.incident.dto.AssignmentRequest;
 import com.faind.domain.incident.dto.AssignmentResponse;
@@ -51,29 +52,31 @@ public class IncidentController {
   // CCTV 경로(ADM-001 confirm)와 동일하게 ADMIN 전용으로 제한한다.
   @PostMapping
   @PreAuthorize("hasRole('ADMIN')")
-  public ResponseEntity<IncidentResponse> create(@Valid @RequestBody IncidentCreateRequest request) {
-    return ResponseEntity.ok(incidentService.create(request));
+  public ResponseEntity<IncidentResponse> create(
+      @CurrentUser AuthenticatedUser currentUser, @Valid @RequestBody IncidentCreateRequest request) {
+    return ResponseEntity.ok(incidentService.create(currentUser.organizationId(), request));
   }
 
   // ADM-001 관리자 홈 통계 카드 (FR-09)
   @GetMapping("/dashboard-summary")
   @PreAuthorize("hasRole('ADMIN')")
-  public ResponseEntity<DashboardSummaryResponse> getDashboardSummary() {
-    return ResponseEntity.ok(incidentService.getDashboardSummary());
+  public ResponseEntity<DashboardSummaryResponse> getDashboardSummary(@CurrentUser AuthenticatedUser currentUser) {
+    return ResponseEntity.ok(incidentService.getDashboardSummary(currentUser.organizationId()));
   }
 
   // ADM-001 "최근 출동 목록"
   @GetMapping
   @PreAuthorize("hasRole('ADMIN')")
-  public ResponseEntity<Page<IncidentListItemResponse>> listRecent(Pageable pageable) {
-    return ResponseEntity.ok(incidentService.listRecent(pageable));
+  public ResponseEntity<Page<IncidentListItemResponse>> listRecent(
+      @CurrentUser AuthenticatedUser currentUser, Pageable pageable) {
+    return ResponseEntity.ok(incidentService.listRecent(currentUser.organizationId(), pageable));
   }
 
   // CMD-001 지휘관 태블릿 진입 화면: DISPATCHED/IN_PROGRESS 전체 (CCTV 출처는 commanderId가 없어 개인별 필터 불가)
   @GetMapping("/active")
   @PreAuthorize("hasAnyRole('COMMANDER','ADMIN')")
-  public ResponseEntity<List<IncidentResponse>> listActive() {
-    return ResponseEntity.ok(incidentService.listActive());
+  public ResponseEntity<List<IncidentResponse>> listActive(@CurrentUser AuthenticatedUser currentUser) {
+    return ResponseEntity.ok(incidentService.listActive(currentUser.organizationId()));
   }
 
   // USR-001 대원 앱 진입 화면: 내가 배정된, 아직 종료되지 않은 출동
@@ -89,42 +92,47 @@ public class IncidentController {
   @GetMapping("/{incidentId}")
   public ResponseEntity<IncidentResponse> get(@PathVariable UUID incidentId, @CurrentUser AuthenticatedUser currentUser) {
     requireIncidentAccess(incidentId, currentUser);
-    return ResponseEntity.ok(incidentService.getIncident(incidentId));
+    return ResponseEntity.ok(incidentService.getIncident(currentUser.organizationId(), incidentId));
   }
 
   // CMD-001: 사전분석 결과 + NFR-03 검증용 소요시간. responder-app은 호출하지 않는 지휘관 전용 데이터.
   @GetMapping("/{incidentId}/pre-analysis")
   @PreAuthorize("hasAnyRole('COMMANDER','ADMIN')")
-  public ResponseEntity<PreAnalysisResponse> getPreAnalysis(@PathVariable UUID incidentId) {
-    return ResponseEntity.ok(incidentService.getPreAnalysis(incidentId));
+  public ResponseEntity<PreAnalysisResponse> getPreAnalysis(
+      @CurrentUser AuthenticatedUser currentUser, @PathVariable UUID incidentId) {
+    return ResponseEntity.ok(incidentService.getPreAnalysis(currentUser.organizationId(), incidentId));
   }
 
   // CMD-002 드론 정찰 카드(FR-26) 등에서 사용하는 AI 판단 이력. 지휘관 전용.
   @GetMapping("/{incidentId}/ai-judgments")
   @PreAuthorize("hasAnyRole('COMMANDER','ADMIN')")
-  public ResponseEntity<List<AiJudgmentSummaryResponse>> getAiJudgments(@PathVariable UUID incidentId) {
-    return ResponseEntity.ok(incidentService.getAiJudgments(incidentId));
+  public ResponseEntity<List<AiJudgmentSummaryResponse>> getAiJudgments(
+      @CurrentUser AuthenticatedUser currentUser, @PathVariable UUID incidentId) {
+    return ResponseEntity.ok(incidentService.getAiJudgments(currentUser.organizationId(), incidentId));
   }
 
   // FR-20 CMD-001/002: 후발대(소방차) 경로·ETA — 출동 확정 시 관할 소방서 고정 좌표 기준으로 1회 계산돼 캐시된 값. 지휘관 전용.
   @GetMapping("/{incidentId}/route-estimate")
   @PreAuthorize("hasAnyRole('COMMANDER','ADMIN')")
-  public ResponseEntity<RouteEstimateResponse> getGroundRouteEstimate(@PathVariable UUID incidentId) {
-    return ResponseEntity.ok(incidentService.getGroundRouteEstimate(incidentId));
+  public ResponseEntity<RouteEstimateResponse> getGroundRouteEstimate(
+      @CurrentUser AuthenticatedUser currentUser, @PathVariable UUID incidentId) {
+    return ResponseEntity.ok(incidentService.getGroundRouteEstimate(currentUser.organizationId(), incidentId));
   }
 
   // FR-19: 배정 시 선발대/통신담당 자동 산출
   @PostMapping("/{incidentId}/assignments")
   @PreAuthorize("hasAnyRole('COMMANDER','ADMIN')")
-  public ResponseEntity<AssignmentResponse> assign(@PathVariable UUID incidentId, @Valid @RequestBody AssignmentRequest request) {
-    return ResponseEntity.ok(incidentService.assign(incidentId, request));
+  public ResponseEntity<AssignmentResponse> assign(
+      @CurrentUser AuthenticatedUser currentUser, @PathVariable UUID incidentId, @Valid @RequestBody AssignmentRequest request) {
+    return ResponseEntity.ok(incidentService.assign(currentUser.organizationId(), incidentId, request));
   }
 
   // FR-19: 지휘관이 통신 담당 재지정
   @PatchMapping("/{incidentId}/assignments/{userId}/comms-lead")
   @PreAuthorize("hasAnyRole('COMMANDER','ADMIN')")
-  public ResponseEntity<AssignmentResponse> reassignCommsLead(@PathVariable UUID incidentId, @PathVariable UUID userId) {
-    return ResponseEntity.ok(incidentService.reassignCommsLead(incidentId, userId));
+  public ResponseEntity<AssignmentResponse> reassignCommsLead(
+      @CurrentUser AuthenticatedUser currentUser, @PathVariable UUID incidentId, @PathVariable UUID userId) {
+    return ResponseEntity.ok(incidentService.reassignCommsLead(currentUser.organizationId(), incidentId, userId));
   }
 
   // FR-03/04/12: 대원 실시간 상태 적재 (웨어러블·앱에서 주기적으로 전송)
@@ -134,7 +142,7 @@ public class IncidentController {
   public ResponseEntity<Void> recordResponderStatus(
       @PathVariable UUID incidentId, @Valid @RequestBody ResponderStatusRequest request,
       @CurrentUser AuthenticatedUser currentUser) {
-    incidentService.recordResponderStatus(incidentId, request, currentUser.userId());
+    incidentService.recordResponderStatus(currentUser.organizationId(), incidentId, request, currentUser.userId());
     return ResponseEntity.ok().build();
   }
 
@@ -144,14 +152,23 @@ public class IncidentController {
   public ResponseEntity<MonitoringResponse> getMonitoring(
       @PathVariable UUID incidentId, @CurrentUser AuthenticatedUser currentUser) {
     requireIncidentAccess(incidentId, currentUser);
-    return ResponseEntity.ok(incidentService.getMonitoring(incidentId));
+    return ResponseEntity.ok(incidentService.getMonitoring(currentUser.organizationId(), incidentId));
   }
 
   // FR-05 CMD-006 "종료 확정" — QA 최우선 재검증 대상
   @PatchMapping("/{incidentId}/close")
   @PreAuthorize("hasAnyRole('COMMANDER','ADMIN')")
-  public ResponseEntity<IncidentResponse> close(@PathVariable UUID incidentId) {
-    return ResponseEntity.ok(incidentService.close(incidentId));
+  public ResponseEntity<IncidentResponse> close(
+      @CurrentUser AuthenticatedUser currentUser, @PathVariable UUID incidentId) {
+    return ResponseEntity.ok(incidentService.close(currentUser.organizationId(), incidentId));
+  }
+
+  // Firefly GCS 라이트 지도 뷰: 지금 떠 있는 드론 전체 위치. 지휘관 태블릿/관리자 전용.
+  @GetMapping("/drone-dispatches/active")
+  @PreAuthorize("hasAnyRole('COMMANDER','ADMIN')")
+  public ResponseEntity<List<ActiveDroneDispatchResponse>> listActiveDroneDispatches(
+      @CurrentUser AuthenticatedUser currentUser) {
+    return ResponseEntity.ok(droneDispatchService.listActiveDispatches(currentUser.organizationId()));
   }
 
   // FR-26: 드론 도착 후 정찰 결과 콜백 (ai-server → Java 모놀리식)

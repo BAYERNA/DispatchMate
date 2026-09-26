@@ -6,7 +6,7 @@ docker-compose.yml / backend의 application.yml과 짝을 맞췄다.
 
 import json
 from functools import lru_cache
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -41,6 +41,8 @@ class Settings(BaseSettings):
 
     # FR-24/26 화재감지 임계값. 와이어프레임 ADM-001 예시(91%, 76%)를 참고해 기본값을 잡았다.
     yolo_model_path: str = "models/fire_yolov8.pt"
+    yolo_backend: Literal["pytorch", "onnx"] = "pytorch"
+    yolo_onnx_model_path: str = "models/fire_yolov8.onnx"
     yolo_device: str = "cpu"
     fire_confidence_threshold: float = 0.55
 

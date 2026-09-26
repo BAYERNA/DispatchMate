@@ -1,0 +1,15 @@
+# backend가 노출하는 /actuator/prometheus를 15초 주기로 스크레이핑한다.
+# 이 엔드포인트는 InternalServiceAuthFilter가 보호한다(backend/.../SecurityConfig.java) — codex
+# 브랜치 병합 이후 INTERNAL_SERVICE_TOKEN 없이는 fail-closed로 503을 반환하므로, docker-compose.yml이
+# secrets로 건네는 /run/secrets/internal_service_token을 매 스크레이핑마다 읽어 Bearer 토큰으로 쓴다.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: faind-backend
+    metrics_path: /actuator/prometheus
+    authorization:
+      credentials_file: /run/secrets/internal_service_token
+    static_configs:
+      - targets: ["backend:8080"]

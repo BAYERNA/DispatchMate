@@ -1,5 +1,7 @@
 # FAIND 로컬 개발용 Docker Compose. 6개 런타임 전체를 한 번에 기동한다.
 # (기술스택 §2.9: 데모 규모는 Docker Compose로 충분, Kubernetes는 실서비스 확장 시점의 로드맵)
+# + prometheus/grafana: backend가 노출하던 /actuator/prometheus를 실제로 수집·시각화한다
+# (http://localhost:3000, admin/faind).
 #
 # 3개 프론트엔드(admin-web/commander-tablet/responder-app)는 각자 nginx.conf로 /api, /notify,
 # /socket.io, /ai-stream을 backend/notification-server/ai-server로 프록시한다 — dev server의
@@ -8,7 +10,9 @@
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector 확장이 미리 설치된 공식 이미지 — vanilla postgres:16-alpine에는 없다.
+    # postgres:16과 완전히 호환되는 드롭인 대체(FR-08 SOP 벡터 검색용).
+    image: pgvector/pgvector:pg16
     container_name: faind-postgres
     environment:
       POSTGRES_DB: faind
@@ -60,6 +64,10 @@ services:
       # Spring Security CORS 필터가 이 요청들을 403으로 막는다. 두 세트 다 허용해야 dev/compose
       # 양쪽에서 로그인이 된다.
       CORS_ALLOWED_ORIGINS: http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:8081,http://localhost:8082,http://localhost:8083
+      # opentelemetry-spring-boot-starter는 OTLP 프로토콜 기본값이 gRPC(4317)다 — 수집기가
+      # 안 떠 있어도(예: jaeger 서비스를 뺀 구성) 익스포트만 백그라운드에서 조용히 실패할 뿐
+      # 기동을 막지 않는다.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4317}
     ports:
       - "8080:8080"
     healthcheck:
@@ -76,6 +84,11 @@ services:
       FAIND_BACKEND_BASE_URL: http://backend:8080
       FAIND_BACKEND_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?Set INTERNAL_SERVICE_TOKEN in the root .env}
       FAIND_CAMERA_ALLOWED_HOSTS: ${FAIND_CAMERA_ALLOWED_HOSTS:-}
+      # ai-server는 OTLP/HTTP(4318) 익스포터를 명시적으로 쓴다 — backend(gRPC/4317)와 포트가 다르다.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318}
+      # 기동 시점 모델 설정(가중치 경로·임계값)을 MLflow run으로 남긴다. mlflow 서비스가 없거나
+      # 안 떠 있어도 경고 로그만 남기고 기동은 계속된다(app/core/experiment_tracking.py).
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow:5000}
     ports:
       - "8001:8001"
 
@@ -104,7 +117,8 @@ services:
       INTERAGENCY_WEBHOOK_URL: ${INTERAGENCY_WEBHOOK_URL:-}
       INTERAGENCY_TOKEN: ${INTERAGENCY_TOKEN:-}
       PUSH_GATEWAY_URL: ${PUSH_GATEWAY_URL:-}
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # notification-server도 OTLP/HTTP(4318) 익스포터를 쓴다(ai-server와 동일 포트).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318}
       SECRET_PROVIDER: ${SECRET_PROVIDER:-env}
       SECURITY_FAIL_CLOSED: ${SECURITY_FAIL_CLOSED:-true}
       MTLS_CERT_PATH: ${MTLS_CERT_PATH:-}
@@ -124,6 +138,8 @@ services:
     build:
       context: .
       dockerfile: admin-web/Dockerfile
+      args:
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
     # package-lock.json이 x64 환경에서 생성돼 rolldown(vite)의 arm64-musl 네이티브 바인딩이
     # lockfile에 없다 — Apple Silicon(arm64) 호스트에서 npm ci가 그 바이너리를 못 찾아 빌드가
     # 깨지므로, x64-musl 바이너리는 lockfile에 있는 이 서비스를 amd64로 고정한다.
@@ -141,6 +157,8 @@ services:
     build:
       context: .
       dockerfile: commander-tablet/Dockerfile
+      args:
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
     platform: linux/amd64
     container_name: faind-commander-tablet
     depends_on:
@@ -157,6 +175,7 @@ services:
       dockerfile: responder-app/Dockerfile
       args:
         VITE_WEB_PUSH_PUBLIC_KEY: ${VITE_WEB_PUSH_PUBLIC_KEY:-}
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
     platform: linux/amd64
     container_name: faind-responder-app
     depends_on:
@@ -167,5 +186,69 @@ services:
     ports:
       - "8083:80"
 
+  # backend가 노출하지만 아무도 보지 않던 /actuator/prometheus(CircuitBreaker 상태 등)를
+  # 실제로 시계열로 쌓고(prometheus) 대시보드로 보여준다(grafana) — 로그를 뒤지지 않고도
+  # aiServer/notificationServer 서킷 open 여부를 한눈에 볼 수 있다.
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: faind-prometheus
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    # codex 브랜치 병합 이후 /actuator/prometheus도 다른 내부 서비스 엔드포인트와 동일하게
+    # INTERNAL_SERVICE_TOKEN 없이는 503로 거부된다 — 스크레이핑에 필요한 토큰을 시크릿 파일로
+    # 건네고, monitoring/prometheus.yml의 authorization.credentials_file이 그 파일을 읽는다.
+    secrets:
+      - internal_service_token
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: faind-grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: faind
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+
+  # Prometheus/Grafana(수치)와 별개로 "요청 하나가 backend→ai-server→notification-server를
+  # 거치며 어디서 느려지는지"를 보여준다. all-in-one 이미지가 OTLP 수신(4317 gRPC·4318 HTTP)을
+  # 기본으로 포함해 별도 collector 없이 바로 쓸 수 있다 — Prometheus/Grafana와 같은 데모 규모용
+  # 단일 컨테이너 패턴.
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: faind-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+
+  # ADM-GOV/ADM-OPS의 모델 버전·임계값 관리를 보완하는 실험 트래킹 서버. ai-server가 기동 시점의
+  # 모델 설정을 run으로 기록한다(app/core/experiment_tracking.py) — 정식 이미지 대신 mlflow
+  # 패키지를 직접 설치하는 얇은 Dockerfile을 쓴다(Prometheus/Grafana/Jaeger와 달리 신뢰할 만한
+  # 공식 이미지 태그를 확인할 방법이 없어서).
+  mlflow:
+    build:
+      context: ./mlflow
+    container_name: faind-mlflow
+    volumes:
+      - faind-mlflow-data:/mlflow
+    ports:
+      - "5000:5000"
+
 volumes:
   faind-postgres-data:
+  faind-mlflow-data:
+
+secrets:
+  internal_service_token:
+    environment: INTERNAL_SERVICE_TOKEN

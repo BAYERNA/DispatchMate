@@ -378,3 +378,14 @@
   color: var(--color-ink-soft);
   padding: 16px;
 }
+.field-error {
+  margin-top: 6px;
+  color: var(--color-alert);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.wf-field[aria-invalid='true'] {
+  border-color: var(--color-alert);
+  outline-color: var(--color-alert);
+}

@@ -7,6 +7,7 @@ import java.util.UUID;
 
 public record DeviceResponse(
     UUID deviceId,
+    UUID organizationId,
     String deviceType,
     String serialNo,
     String connectionType,
@@ -27,6 +28,7 @@ public record DeviceResponse(
   public static DeviceResponse from(Device device, String mappedUserName, String mappedUserTeam) {
     return new DeviceResponse(
         device.getDeviceId(),
+        device.getOrganizationId(),
         device.getDeviceType().name(),
         device.getSerialNo(),
         device.getConnectionType(),

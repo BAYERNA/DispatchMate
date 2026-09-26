@@ -1,0 +1,67 @@
+name: Deploy AWS images
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-aws
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+  ECS_CLUSTER: dispatchmate-portfolio
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push immutable images
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker build -t "$REGISTRY/dispatchmate/backend:$TAG" backend
+          docker build -t "$REGISTRY/dispatchmate/ai-server:$TAG" ai-server
+          docker build -t "$REGISTRY/dispatchmate/notification-server:$TAG" notification-server
+          docker build -f admin-web/Dockerfile -t "$REGISTRY/dispatchmate/admin-web:$TAG" .
+          docker build -f commander-tablet/Dockerfile -t "$REGISTRY/dispatchmate/commander-tablet:$TAG" .
+          docker build -f responder-app/Dockerfile -t "$REGISTRY/dispatchmate/responder-app:$TAG" .
+          docker build -f data-pipeline/Dockerfile -t "$REGISTRY/dispatchmate/data-exporter:$TAG" .
+          for image in backend ai-server notification-server admin-web commander-tablet responder-app; do
+            docker push "$REGISTRY/dispatchmate/$image:$TAG"
+          done
+          docker push "$REGISTRY/dispatchmate/data-exporter:$TAG"
+
+      - name: Register task definitions and deploy enabled services
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for service in backend ai-server notification-server admin-web commander-tablet responder-app; do
+            name="$ECS_CLUSTER-$service"
+            if aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$name" --query 'services[0].status' --output text 2>/dev/null | grep -q ACTIVE; then
+              family="$ECS_CLUSTER-$service"
+              aws ecs describe-task-definition --task-definition "$family" --query taskDefinition > task-definition.json
+              jq --arg image "$REGISTRY/dispatchmate/$service:$TAG" \
+                '.containerDefinitions[0].image = $image
+                 | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
+                task-definition.json > next-task-definition.json
+              task_arn=$(aws ecs register-task-definition --cli-input-json file://next-task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)
+              aws ecs update-service --cluster "$ECS_CLUSTER" --service "$name" --task-definition "$task_arn" --force-new-deployment >/dev/null
+            fi
+          done
+          echo "Pushed immutable image tag: $TAG"

@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 class DeviceTest {
 
   private Device newDevice(DeviceType type) {
-    return new Device(type, "SN-001", null, null, null, null, null, null);
+    return new Device(java.util.UUID.randomUUID(), type, "SN-001", null, null, null, null, null, null);
   }
 
   @Test

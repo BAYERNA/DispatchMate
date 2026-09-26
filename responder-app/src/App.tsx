@@ -1,13 +1,15 @@
+import { lazy, Suspense } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthContext'
 import { RequireAuth } from './auth/RequireAuth'
-import { LoginPage } from './pages/LoginPage'
-import { SetInitialPasswordPage } from './pages/SetInitialPasswordPage'
-import { ResponderHomePage } from './pages/ResponderHomePage'
-import { ReportListPage } from './pages/ReportListPage'
-import { ReportEditPage } from './pages/ReportEditPage'
-import { ReportAnalysisPage } from './pages/ReportAnalysisPage'
+
+const LoginPage = lazy(() => import('./pages/LoginPage').then(({ LoginPage }) => ({ default: LoginPage })))
+const SetInitialPasswordPage = lazy(() => import('./pages/SetInitialPasswordPage').then(({ SetInitialPasswordPage }) => ({ default: SetInitialPasswordPage })))
+const ResponderHomePage = lazy(() => import('./pages/ResponderHomePage').then(({ ResponderHomePage }) => ({ default: ResponderHomePage })))
+const ReportListPage = lazy(() => import('./pages/ReportListPage').then(({ ReportListPage }) => ({ default: ReportListPage })))
+const ReportEditPage = lazy(() => import('./pages/ReportEditPage').then(({ ReportEditPage }) => ({ default: ReportEditPage })))
+const ReportAnalysisPage = lazy(() => import('./pages/ReportAnalysisPage').then(({ ReportAnalysisPage }) => ({ default: ReportAnalysisPage })))
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -18,7 +20,8 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <BrowserRouter>
-          <Routes>
+          <Suspense fallback={<div className="spinner-text">화면을 불러오는 중…</div>}>
+            <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route
               path="/initial-password"
@@ -61,7 +64,8 @@ export default function App() {
               }
             />
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+            </Routes>
+          </Suspense>
         </BrowserRouter>
       </AuthProvider>
     </QueryClientProvider>
