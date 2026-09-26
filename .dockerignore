@@ -8,3 +8,8 @@ notification-server
 **/node_modules
 **/dist
 **/.env
+**/__pycache__
+analytics/target
+analytics/logs
+analytics/profiles.yml
+data-pipeline/output

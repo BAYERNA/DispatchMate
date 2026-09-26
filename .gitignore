@@ -2,5 +2,22 @@
 # npm workspace 루트에서 생기는 산출물. 각 앱 자체 소스는 여전히 앱별 .gitignore가 담당한다.
 node_modules
 .env
+**/__pycache__/
+*.py[cod]
+storybook-static/
+infra/aws/.terraform/
+infra/aws/*.tfstate
+infra/aws/*.tfstate.*
+infra/aws/*.tfvars
+ai-server/datasets/**/images/
+ai-server/datasets/**/labels/
+ai-server/evaluation/results/
+ai-server/mlruns/
+ai-server/models/*.onnx
+analytics/profiles.yml
+analytics/target/
+analytics/logs/
+analytics/dbt_packages/
+data-pipeline/output/
 
 /backups/

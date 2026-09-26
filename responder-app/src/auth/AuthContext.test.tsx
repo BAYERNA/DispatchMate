@@ -25,7 +25,7 @@ describe('AuthContext', () => {
   it('login이 성공하면 토큰과 사용자 정보가 저장되고 인증 상태가 된다', async () => {
     vi.mocked(authApi.login).mockResolvedValue({
       accessToken: 'issued-token',
-      userId: 'user-1',
+      userId: '00000000-0000-4000-8000-000000000001',
       name: '홍길동',
       role: 'RESPONDER',
       initialPassword: true,
@@ -37,15 +37,15 @@ describe('AuthContext', () => {
     })
 
     expect(result.current.isAuthenticated).toBe(true)
-    expect(result.current.user).toMatchObject({ userId: 'user-1', role: 'RESPONDER', initialPassword: true })
+    expect(result.current.user).toMatchObject({ userId: '00000000-0000-4000-8000-000000000001', role: 'RESPONDER', initialPassword: true })
     expect(getStoredToken()).toBe('issued-token')
-    expect(JSON.parse(localStorage.getItem('faind.user')!)).toMatchObject({ userId: 'user-1' })
+    expect(JSON.parse(localStorage.getItem('faind.user')!)).toMatchObject({ userId: '00000000-0000-4000-8000-000000000001' })
   })
 
   it('completeInitialPassword는 initialPassword만 false로 바꾸고 나머지는 유지한다', async () => {
     vi.mocked(authApi.login).mockResolvedValue({
       accessToken: 'issued-token',
-      userId: 'user-1',
+      userId: '00000000-0000-4000-8000-000000000001',
       name: '홍길동',
       role: 'RESPONDER',
       initialPassword: true,
@@ -58,14 +58,14 @@ describe('AuthContext', () => {
     act(() => result.current.completeInitialPassword())
 
     expect(result.current.user?.initialPassword).toBe(false)
-    expect(result.current.user?.userId).toBe('user-1')
+    expect(result.current.user?.userId).toBe('00000000-0000-4000-8000-000000000001')
     expect(JSON.parse(localStorage.getItem('faind.user')!).initialPassword).toBe(false)
   })
 
   it('logout은 토큰·사용자 정보를 모두 지운다', async () => {
     vi.mocked(authApi.login).mockResolvedValue({
       accessToken: 'issued-token',
-      userId: 'user-1',
+      userId: '00000000-0000-4000-8000-000000000001',
       name: '홍길동',
       role: 'RESPONDER',
       initialPassword: false,
@@ -90,7 +90,7 @@ describe('AuthContext', () => {
   it('로그인 응답의 role이 3종을 벗어나면 인증 상태로 만들지 않고 던진다', async () => {
     vi.mocked(authApi.login).mockResolvedValue({
       accessToken: 'issued-token',
-      userId: 'user-1',
+      userId: '00000000-0000-4000-8000-000000000001',
       name: '홍길동',
       // @ts-expect-error 잘못된 백엔드 응답을 흉내낸다
       role: 'SUPERUSER',
@@ -106,7 +106,7 @@ describe('AuthContext', () => {
 
   it('localStorage에 저장된 사용자 정보가 스키마에 맞지 않으면 로그아웃 상태로 시작한다', () => {
     localStorage.setItem('faind.accessToken', 'stale-token')
-    localStorage.setItem('faind.user', JSON.stringify({ userId: 'user-1', name: '홍길동', role: 'SUPERUSER', initialPassword: false }))
+    localStorage.setItem('faind.user', JSON.stringify({ userId: '00000000-0000-4000-8000-000000000001', name: '홍길동', role: 'SUPERUSER', initialPassword: false }))
 
     const { result } = renderAuth()
 

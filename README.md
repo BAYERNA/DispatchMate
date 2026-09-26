@@ -30,13 +30,15 @@ AI·알림 서버와 세 프론트엔드는 별도 런타임입니다. 아래 �
 | `admin-web/` | React 19 + TypeScript + Vite | 구현 완료 (CMN-001/002, ADM-001/002/003/006/009) |
 | `commander-tablet/` | React 19 + TypeScript + Vite | 구현 완료 (CMN-001/002, CMD-001/002/003/006) |
 | `responder-app/` | React 19 + TypeScript + Vite | 구현 완료 (CMN-001/002, USR-001/002/003) |
+| `analytics/` | dbt + PostgreSQL | 출동 KPI 모델·데이터 품질 게이트 구현 |
+| `data-pipeline/` | Python + ECS Task + S3 | 비식별 집계 데이터 암호화 내보내기 구현 |
 
 ## 실행 전 준비
 
 - 전체 컨테이너 실행: Docker Engine 또는 Docker Desktop + Docker Compose v2.
 - 개별 실행: JDK 21, Python 3.11, 프론트엔드 Node.js 22.22 이상(22.x 권장).
   notification-server CI는 Node.js 20을 사용합니다.
-- DB는 PostgreSQL 16, Redis는 7을 기준으로 합니다.
+- DB는 pgvector 확장을 포함한 PostgreSQL 16, Redis는 7을 기준으로 합니다.
 - 프론트엔드는 npm workspace 구조이므로 저장소 루트에서 `npm ci`를 한 번 실행합니다.
   notification-server는 별도 패키지이므로 해당 디렉터리에서 따로 `npm ci`를 실행합니다.
 - Windows에서는 backend 실행 시 `gradlew.bat bootRun`을 사용할 수 있습니다.
@@ -51,7 +53,7 @@ cp .env.example .env
 # .env의 DB 비밀번호, JWT 키, 두 내부 토큰을 서로 다른 충분히 긴 무작위 값으로 채운 뒤 실행
 docker compose up -d --build
 docker compose ps
-curl -f http://localhost:8080/actuator/health
+curl -f http://localhost:9091/actuator/health
 ```
 
 `JWT_SECRET`은 backend·알림 서버가, `INTERNAL_WEBHOOK_TOKEN`은 backend·알림 서버가,
@@ -64,7 +66,9 @@ backend가 healthy가 되어 Flyway 마이그레이션을 마친 다음, **폐�
 덮어쓰므로 실제 사용자 DB에는 실행하지 마세요.
 
 ```bash
-docker compose exec -T postgres psql -U faind -d faind < scripts/seed-e2e-accounts.sql
+export E2E_TEST_PASSWORD='로컬에서만 사용할 임의의 테스트 비밀번호'
+docker compose exec -T postgres psql -U faind -d faind \
+  -v e2e_password="$E2E_TEST_PASSWORD" < scripts/seed-e2e-accounts.sql
 ```
 
 | 화면 | 주소 | 테스트 사번 |
@@ -73,7 +77,7 @@ docker compose exec -T postgres psql -U faind -d faind < scripts/seed-e2e-accoun
 | 지휘관 | http://localhost:8082 | `E2E-COMMANDER` |
 | 대원 | http://localhost:8083 | `E2E-RESPONDER` |
 
-테스트 비밀번호는 시드 스크립트에 정의된 데모 전용 값입니다. 실행 전 로컬 정책에 맞게 바꾸고, 외부 공개 환경에서
+테스트 비밀번호는 실행할 때만 전달하며 저장소에 고정하지 않습니다. 외부 공개 환경에서 데모 계정을
 사용하면 안 됩니다. 신규 DB에서는 계정만 생성되므로 출동·장비 목록이 비어 있을 수 있습니다.
 중지할 때는 `docker compose down`을 사용하면 DB 볼륨은 보존됩니다.
 `docker compose down -v`는 DB 데이터를 삭제하므로 주의하세요.
@@ -93,7 +97,7 @@ uvicorn app.main:app --reload --port 8001
 ## backend 로컬 실행
 
 ```bash
-docker compose up -d postgres redis   # 또는 로컬 PostgreSQL 16 + Redis 7
+docker compose up -d postgres redis   # 또는 pgvector 확장이 설치된 PostgreSQL 16 + Redis 7
 cd backend
 ./gradlew bootRun
 ```
@@ -121,6 +125,41 @@ ai-server가 콜백하는 `/incidents/dispatch/cctv-detections`·`/incidents/dro
 넣어야 한다. backend 토큰이 비어 있으면 내부 콜백은 503으로 거부된다.
 Compose는 루트 `.env`의 `INTERNAL_SERVICE_TOKEN`을 양쪽 변수로 전달한다.
 개별 프로세스로 실행할 때는 각각 환경변수를 설정해야 한다.
+
+### AI 모델 평가·MLflow·ONNX·SOP RAG
+
+- `ai-server/datasets/manifest.example.json`은 데이터셋 버전, 출처, 라이선스와 파일별 SHA-256을 관리합니다.
+- `scripts/evaluate_yolo.py`는 test split의 Precision·Recall·F1·mAP50·mAP50-95를 저장하고 선택적으로 MLflow에 기록합니다.
+- `scripts/check_model_regression.py`는 승인된 기준 대비 허용 범위를 넘는 성능 저하를 배포 전에 차단합니다.
+- `scripts/export_onnx.py`와 `scripts/benchmark_inference.py`로 PyTorch·ONNX 추론시간을 비교할 수 있습니다.
+- `FAIND_YOLO_BACKEND=onnx`이면 `FAIND_YOLO_ONNX_MODEL_PATH`의 모델을 ONNX Runtime으로 실행합니다.
+- Flyway V16은 128차원 pgvector SOP 검색 테이블을 생성합니다. Java backend가 결정론적 임베딩과
+  조직 범위가 적용된 내부 검색 API를 제공하고, AI 서버는 검색 장애 시 기존 고정 체크리스트로
+  안전하게 대체합니다. 실제 SOP 검증셋으로 Recall@K를 측정한 뒤 승인된 한국어 임베딩 모델로
+  교체할 수 있도록 검색 경계를 분리했습니다.
+
+```bash
+# 실험 추적 서버
+docker compose --profile mlops up -d mlflow
+
+cd ai-server
+pip install -r requirements-mlops.txt
+python scripts/verify_dataset.py datasets/fire-smoke/manifest.json
+python scripts/evaluate_yolo.py --model models/fire_yolov8.pt \
+  --manifest datasets/fire-smoke/manifest.json --mlflow-uri http://localhost:5000
+python scripts/export_onnx.py --model models/fire_yolov8.pt
+```
+
+### 데이터 분석·품질·S3 내보내기
+
+`analytics/`는 운영 DB를 읽어 출동별·일별 KPI를 별도 분석 스키마에 구성한다. `dbt build`는
+PK/FK, 허용 상태값, 좌표 범위, 시간 순서와 집계 중복을 검사하며 하나라도 실패하면 전체 작업이
+실패한다. 실행 방법과 환경변수는 `analytics/README.md`를 참고한다.
+
+`data-pipeline/`은 품질 검사를 통과한 일별 집계만 gzip CSV와 SHA-256 매니페스트로 S3에 저장한다.
+사용자 정보와 개별 출동 식별자는 내보내기 쿼리에 포함하지 않는다. `infra/aws/`는 퍼블릭 접근 차단,
+TLS 강제, KMS 암호화, 버전 관리, 보관주기와 매일 03:00 KST 예약 ECS 작업을 정의한다. 예약 실행은
+이미지가 먼저 배포된 뒤 `enable_data_exports = true`로 명시해야 활성화된다.
 
 보안 점검(Phase 10)에서 `POST /api/v1/auth/login`에 시도 횟수 제한이 전혀 없어 사번을 고정한 채
 비밀번호를 무한히 대입할 수 있는 것을 발견해 고쳤다 — Redis에 사번당 실패 횟수를 세어 15분 내
@@ -193,6 +232,46 @@ server의 vite proxy와 동일한 규칙(`/api`→backend, `/notify`·`/socket.i
 | commander-tablet | http://localhost:8082 |
 | responder-app | http://localhost:8083 |
 | backend Swagger | http://localhost:8080/swagger-ui.html |
+| backend management | http://localhost:9091/actuator/health |
+
+## 관측성: Prometheus, Grafana, OpenTelemetry
+
+기본 Compose 실행에서는 관측성 컨테이너를 띄우지 않습니다. 다음 명령은 OTLP 주소를 세 서버에
+전달하고 Prometheus, Grafana, OpenTelemetry Collector, Tempo를 함께 시작합니다.
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 \
+  docker compose --profile monitoring up -d --build
+```
+
+- Grafana: `http://localhost:3000` — `.env`의 `GRAFANA_ADMIN_USER`와 `GRAFANA_ADMIN_PASSWORD` 사용
+- Prometheus: `http://localhost:9090`
+- Backend 관리 포트: `http://localhost:9091`
+
+Grafana에는 backend 상태, 요청률·응답시간, JVM, DB 풀, Circuit Breaker 대시보드와 Tempo
+데이터소스가 자동 등록됩니다. Java는 컨테이너의 OpenTelemetry Java Agent, NestJS는 Node 자동
+계측, FastAPI는 FastAPI·HTTPX 계측을 사용합니다. `OTEL_EXPORTER_OTLP_ENDPOINT`가 비어 있으면
+세 런타임 모두 trace 전송을 하지 않습니다.
+
+## AWS 배포 기반
+
+`infra/aws`에는 서울 리전 기준 VPC, private Fargate, ALB, ECR, RDS PostgreSQL 16,
+ElastiCache Redis, Secrets Manager, CloudWatch 및 ECS Service Connect 구성이 있습니다.
+기본 `deploy_services=false`이므로 첫 Terraform 적용은 이미지가 없는 ECS 서비스를 시작하지 않습니다.
+비용과 배포 순서는 [`infra/aws/README.md`](infra/aws/README.md)를 확인하세요.
+
+`.github/workflows/deploy-aws.yml`은 수동 실행 전용입니다. GitHub OIDC용
+`AWS_DEPLOY_ROLE_ARN`을 설정한 경우에만 애플리케이션 6개와 data-exporter 이미지를 커밋 SHA로
+ECR에 올리고, 이미 활성화된 ECS 서비스의 task definition을 새 이미지로 갱신합니다.
+data-exporter 예약 작업은 같은 SHA를 `image_tag`로 지정해 Terraform을 적용할 때 갱신됩니다.
+
+## 프론트엔드 품질 도구
+
+- 로그인 폼은 React Hook Form과 Zod로 입력 상태·오류·제출 상태를 관리하고, 로그인 API 응답도 Zod 스키마로 검증합니다.
+- 관리자 기관 통계의 월별·유형별 빈도는 Recharts의 반응형 차트로 렌더링합니다.
+- `npm run storybook`은 공통 디자인 시스템을 6006 포트에서 실행하고, `npm run build-storybook`은 접근성 검사를 포함한 정적 문서를 생성합니다.
+- 세 프론트엔드는 `VITE_SENTRY_DSN`이 설정된 경우에만 Sentry를 초기화합니다. Error Boundary가 처리한 오류에는 컴포넌트 스택을 포함하며, DSN이 비어 있으면 외부 전송을 하지 않습니다.
+- 배포 시 `VITE_APP_RELEASE`를 커밋 SHA나 배포 버전으로 설정하고, `VITE_SENTRY_TRACES_SAMPLE_RATE`는 트래픽과 개인정보 정책에 맞게 조정하세요.
 
 ## 테스트와 검증
 
@@ -209,7 +288,7 @@ npm run lint --workspaces --if-present
 
 | 디렉터리 | 명령 |
 |---|---|
-| `backend` | `./gradlew test compileJava --no-daemon` (JDK 21 필요) |
+| `backend` | `./gradlew test compileJava --no-daemon` (JDK 21과 Testcontainers용 Docker 필요) |
 | `notification-server` | `npm ci && npm run build && npm test -- --runInBand` |
 | `ai-server` | 가상환경에서 `pip install -r requirements-dev.txt` 후 `python -m pytest tests/ -v` |
 
@@ -241,7 +320,7 @@ CI의 AI 의존성 점검은 정보성이고 npm 점검은 critical 기준이므
   Java 송신부도 Bearer 토큰을 전달하며, 토큰 미설정 시 인증을 생략하지 않습니다.
 - 공개 배포 전 TLS, 서비스 간 네트워크 격리, 외부 API 및 의존성 취약점 점검을 별도로 수행하세요.
   `/pre-analysis`, `/sop-match`는 내부 서비스용이며 공개망에 노출하지 마세요.
-- 실제 PostgreSQL에서 V7~V14 마이그레이션·계정 무효화·재알림/오프라인 명령 중복 방지 및 실제 카메라·SMS·음성·기관 연동을 검증하세요.
+- 실제 PostgreSQL에서 V7~V17 마이그레이션·계정 무효화·재알림/오프라인 명령 중복 방지·SOP 벡터 검색 및 실제 카메라·SMS·음성·기관 연동을 검증하세요.
 
 ## 이번 변경 및 호환성
 
@@ -279,7 +358,7 @@ CI의 AI 의존성 점검은 정보성이고 npm 점검은 critical 기준이므
 
 새 API는 `POST /incidents/:incidentId/alerts/receipts` (`{ "alertIds": ["UUID"] }`)와
 `GET /incidents/:incidentId/alerts/delivery-status`입니다. 브라우저에서는 `/notify` 프록시를 사용합니다.
-배포 시 **backend Flyway V8~V14를 먼저 적용**한 뒤 알림 서버와 프론트를 갱신하세요.
+배포 시 **backend Flyway V8~V17을 먼저 적용**한 뒤 AI·알림 서버와 프론트를 갱신하세요.
 구버전 알림 서버와의 혼합 운영, 실제 PostgreSQL의 동시 세션 잠금, 전체 서비스 E2E는 별도 검증이 필요합니다.
 기존 10분 미확인 위험경고의 1회 재알림 정책은 유지합니다. 대상자 중 일부만 확인한 경우의 추가 재알림 정책은 포함하지 않습니다.
 
@@ -348,6 +427,7 @@ PGLITE_ROOT=/tmp/dispatchmate-db-check/node_modules/@electric-sql/pglite node te
 ### V11 현장 안전·운영 인텔리전스
 
 - **MAYDAY·PAR:** 대원 원터치 긴급신호, 지휘 확인 전 반복 경보, 30~1800초 인원점검과 미응답 자동 위험신호를 제공합니다.
+- **통신 건전성:** 대원 앱이 15초마다 heartbeat와 WebSocket·네트워크 상태를 보고합니다. 지휘 화면은 정상·저하·단절을 구분하고, 서버는 45초 이상 미수신 시 멱등 안전경보를 생성합니다. 브라우저가 RSSI를 제공하지 않는 경우에는 연결·RTT·다운링크와 heartbeat 최신성만으로 판단합니다.
 - **영속 작업 큐·푸시:** PUSH/SMS/VOICE/기관 전송은 `durable_jobs`에서 멱등 키, 지수 백오프, 최대 재시도와 DEAD 상태를 관리합니다. `PUSH_GATEWAY_URL`은 FCM/APNs/Web Push 중계 어댑터 주소입니다.
 - **경로·실내 위치:** GPS 경로·ETA와 위험요소, BLE/UWB/GPS/수동 위치를 저장합니다. 내장 ETA는 직선거리 기반 참고값이며 실제 도로 통제 경로는 외부 라우팅 연동이 필요합니다.
 - **장비·의료:** QR/RFID 장비 생명주기와 반출 스캔, 병원 수용상태와 환자 인계 데이터를 연결합니다.
@@ -358,7 +438,7 @@ PGLITE_ROOT=/tmp/dispatchmate-db-check/node_modules/@electric-sql/pglite node te
 
 Web Push는 대원 화면의 “종료 상태 푸시 활성화”에서 서비스 워커를 등록합니다. 빌드 시 `VITE_WEB_PUSH_PUBLIC_KEY`가 필요합니다. Prometheus 스크레이퍼는 인증 토큰과 함께 `GET /operations/metrics/prometheus`를 호출할 수 있습니다. 외부 계약 전에는 `node scripts/mock-operations-gateway.mjs` 또는 `scripts/test-mock-gateway.sh`로 PUSH/SMS/음성/기관/경로 어댑터 형식을 점검합니다.
 
-외부 푸시, 도로 라우팅, BLE/UWB, RFID 리더, 병원 시스템은 공급자별 계약이 없으므로 고정 설정 어댑터와 실패 상태까지만 제공합니다. URL·토큰·장비가 없으면 성공으로 처리하지 않습니다. V14 적용 후 새 알림 서버와 세 프론트엔드를 함께 배포하세요.
+외부 푸시, 도로 라우팅, BLE/UWB, RFID 리더, 병원 시스템은 공급자별 계약이 없으므로 고정 설정 어댑터와 실패 상태까지만 제공합니다. URL·토큰·장비가 없으면 성공으로 처리하지 않습니다. V16 적용 후 새 알림 서버와 세 프론트엔드를 함께 배포하세요.
 
 ### V12 복원력·거버넌스·연합 운영
 
@@ -402,7 +482,8 @@ V12의 실제 Vault/KMS 조회, mTLS handshake, BIM 렌더러, 음성 인식 공
 - **감사 WORM manifest:** hash-chain 범위, head hash, 외부 artifact URI와 SHA-256을 기록해 외부 WORM 복제를 검증할 수 있습니다. 저장소 자체가 WORM 스토리지를 대신하지 않습니다.
 - **인증서 인벤토리:** 서비스별 인증서 fingerprint, 발급자와 만료일을 기록합니다. `scripts/check-certificate-expiry.sh`로 배포 인증서가 지정 기간 안에 만료되는지 차단할 수 있습니다.
 
-CI는 V1~V14 마이그레이션과 58개 DB·현장 통합 시나리오, Compose 설정, 셸 문법 및 운영 환경 Chaos 차단을 검증합니다.
+CI는 실제 pgvector PostgreSQL에서 V1~V17 마이그레이션을, 별도 PGlite 시나리오에서 V1~V16 DB·현장 동작을 검증합니다.
+Compose 설정, 셸 문법 및 운영 환경 Chaos 차단도 함께 검사합니다.
 
 ```bash
 # 로컬 운영 보증 검사
@@ -427,6 +508,27 @@ CERTIFICATE_WARNING_DAYS=30 ./scripts/check-certificate-expiry.sh certs/service.
 - **지휘 의사결정 보드:** 활성 MAYDAY, 차단된 목표, 공급자 장애를 근거로 구조·재할당·대체통신 권고를 생성합니다. 권고는 자동 명령이 아니며 지휘관 승인·거절 사유를 반드시 저장합니다.
 - **보안·KPI:** 기기 변경·대량 조회·권한 상승·서명 실패 등의 이상징후와 신고 후 첫 상태수신, 알림 전달, MAYDAY 확인, 사건 지속시간 KPI 스냅샷을 저장합니다.
 
-CI는 V1~V14 마이그레이션과 58개 DB·현장 통합 시나리오를 검증합니다. 실시간 음성 인식, 실제 IFC 파서, 객체 스토리지 chunk 업로드, 드론 비행제어와 공공기관 API 호출은 공급자 SDK/계약이 연결되어야 하며, 현재 어댑터는 이를 성공으로 위장하지 않습니다.
+### V15 통신 건전성
+
+- 대원 단말의 WebSocket·온라인 여부·네트워크 정보를 15초 heartbeat로 저장합니다.
+- 지휘 화면은 마지막 heartbeat가 45초를 넘으면 `OFFLINE`, 소켓 단절이나 약한 RSSI는 `DEGRADED`로 표시합니다.
+- 자동화 워커는 단절된 대원에게 멱등 `RISK_WARNING`을 생성하고 통신 상태 전환을 사고 타임라인에 남깁니다.
+
+### V16 통신 복구와 지휘 명령 확인
+
+- 배정 후 45초 동안 heartbeat가 한 번도 없는 대원도 통신 미연결로 감지하며, 복구 시 지휘관에게 별도 상태 알림을 보냅니다.
+- 통신 상태는 연속 관측을 사용해 `RECOVERING`을 거친 뒤 정상으로 전환하므로 일시적인 네트워크 흔들림이 즉시 정상·저하를 반복하지 않습니다.
+- 개인·전체 지휘 명령은 대원별 `PENDING → RECEIVED → READ → ACCEPTED/REJECTED → COMPLETED` 수명주기를 저장합니다.
+- 확인 제한시간을 넘긴 미응답 명령은 발령자에게 한 번만 에스컬레이션하며, 지휘 화면에서 대원별 상태와 에스컬레이션 여부를 확인합니다.
+
+PGlite CI는 V1~V16과 62개 DB·현장 통합 시나리오를, Testcontainers CI는 pgvector를 포함한 V17까지 검증합니다. 실시간 음성 인식, 실제 IFC 파서, 객체 스토리지 chunk 업로드, 드론 비행제어와 공공기관 API 호출은 공급자 SDK/계약이 연결되어야 하며, 현재 어댑터는 이를 성공으로 위장하지 않습니다.
+
+### V17 AI 모델 거버넌스·SOP RAG
+
+- 데이터셋 manifest가 버전·출처·라이선스·파일 해시를 고정하며 변경된 파일은 평가 전에 거부합니다.
+- 평가 결과는 Precision·Recall·F1·mAP를 JSON/MLflow에 남기고 승인 기준보다 저하된 모델을 차단할 수 있습니다.
+- PyTorch 모델을 ONNX로 변환해 같은 입력에서 평균·p95 추론시간을 비교하며 환경변수로 추론 backend를 전환합니다.
+- 기관 SOP 문서는 pgvector에 원문·버전·라이선스·체크섬과 함께 저장되고 보고서와 유사한 근거만 검색합니다.
+- RAG 검색 실패는 보고서 저장을 막지 않으며 고정 체크리스트 결과와 `fixed-checklist` 상태를 반환합니다.
 
 2026-09-19 코드 점검의 근거, 재현 결과, 미검증 범위는 [CODE_REVIEW.md](CODE_REVIEW.md)를 참고하세요.

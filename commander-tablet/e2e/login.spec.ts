@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test'
 
 // CMN-001 통합 로그인 (FR-01). 비밀번호는 scripts/seed-e2e-accounts.sql 주석 참조.
-const E2E_COMMANDER_PASSWORD = 'Test1234!'
+const E2E_COMMANDER_PASSWORD = process.env.E2E_TEST_PASSWORD
+if (!E2E_COMMANDER_PASSWORD) throw new Error('E2E_TEST_PASSWORD is required')
 
 test.describe('CMN-001 로그인', () => {
   test('사번·비밀번호가 맞으면 CMD-001 출동지령·사전분석 화면으로 이동한다', async ({ page }) => {

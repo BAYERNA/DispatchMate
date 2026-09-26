@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: mart_incident_operations
+    description: 출동별 운영 KPI. 운영 서비스가 아닌 분석·대시보드 전용 모델이다.
+    columns:
+      - name: incident_id
+        tests: [not_null, unique]
+      - name: incident_number
+        tests: [not_null, unique]
+      - name: resolution_seconds
+        tests:
+          - non_negative:
+              config:
+                where: "resolution_seconds is not null"
+  - name: mart_daily_operations
+    description: 개인정보와 개별 출동 식별자를 제외한 일별 집계 KPI. S3 내보내기의 유일한 데이터 원본이다.
+    tests:
+      - unique_combination:
+          arguments:
+            combination_of_columns: [metric_date, incident_type]
+    columns:
+      - name: metric_date
+        tests: [not_null]
+      - name: incident_type
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [FIRE, RESCUE, EMERGENCY]

@@ -68,6 +68,10 @@
   border-bottom: none;
 }
 
+.communication-connected { border-left: 3px solid var(--color-success); padding-left: 8px; }
+.communication-degraded { border-left: 3px solid var(--color-drone); padding-left: 8px; }
+.communication-offline { border-left: 3px solid var(--color-alert); padding-left: 8px; color: var(--color-alert); }
+
 .alert-meta {
   font-size: 10.5px;
   color: var(--color-ink-soft);

@@ -85,6 +85,38 @@ pytest tests/
 카메라별 확산 추적(`_track_spread`)을 검증한다 — 실제 YOLO 추론(`detect_fire_burst`)은 모델
 로드가 필요해 범위 밖이고, 그 결과를 소비하는 순수 계산 로직만 다룬다.
 
+## 모델 평가와 데이터셋 버전 관리
+
+원본 이미지·라벨은 저장소에 커밋하지 않습니다. `datasets/manifest.example.json` 형식으로 버전,
+출처, 라이선스, split과 파일별 SHA-256을 기록합니다. 검증되지 않은 파일은 평가가 시작되기 전에 거부됩니다.
+
+```bash
+pip install -r requirements-mlops.txt
+python scripts/verify_dataset.py datasets/fire-smoke/manifest.json
+python scripts/evaluate_yolo.py --model models/fire_yolov8.pt \
+  --manifest datasets/fire-smoke/manifest.json --output evaluation/results/fire-smoke.json \
+  --mlflow-uri http://localhost:5000
+python scripts/check_model_regression.py --candidate evaluation/results/fire-smoke.json \
+  --baseline evaluation/baselines/fire-smoke.json
+```
+
+최초 승인 전 baseline 값은 0으로 비워져 있습니다. 검증 데이터와 운영 책임자의 승인을 거친 결과만
+baseline으로 승격해야 하며, 테스트를 통과시키기 위해 임계값을 임의로 낮추면 안 됩니다.
+
+## ONNX Runtime
+
+`python scripts/export_onnx.py --model models/fire_yolov8.pt`로 ONNX를 생성하고 실제 대표 이미지로
+`benchmark_inference.py`를 실행합니다. 성능과 정확성 회귀를 모두 확인한 뒤에만
+`FAIND_YOLO_BACKEND=onnx`로 전환합니다. ONNX 파일은 생성물이라 Git에서 제외됩니다.
+
+## SOP RAG
+
+Flyway V16이 생성한 SOP 문서를 Java backend의 128차원 결정론적 임베딩과 pgvector cosine 검색으로
+조회합니다. AI 서버는 `/api/v1/sop/search`를 내부 서비스 토큰으로 호출하고, 검색 실패 시 고정 SOP
+체크리스트로 안전하게 대체합니다. 원문은 외부 임베딩 공급자로 전송하지 않습니다. 현재 임베딩은 운영
+가능한 기준 구현이지만 의미 기반 한국어 임베딩 모델보다 검색 품질이 낮으므로, 실제 SOP 검증셋으로
+Recall@K를 측정한 뒤 승인된 모델로 교체해야 합니다.
+
 ## 테스트해본 방법 (수동 curl)
 
 ```bash

@@ -4,6 +4,7 @@ import com.faind.global.security.InternalServiceAuthFilter;
 import com.faind.global.security.JwtAuthFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -39,10 +40,15 @@ public class SecurityConfig {
 
   private final JwtAuthFilter jwtAuthFilter;
   private final InternalServiceAuthFilter internalServiceAuthFilter;
+  private final boolean prometheusPublic;
 
-  public SecurityConfig(JwtAuthFilter jwtAuthFilter, InternalServiceAuthFilter internalServiceAuthFilter) {
+  public SecurityConfig(
+      JwtAuthFilter jwtAuthFilter,
+      InternalServiceAuthFilter internalServiceAuthFilter,
+      @Value("${faind.monitoring.prometheus-public:false}") boolean prometheusPublic) {
     this.jwtAuthFilter = jwtAuthFilter;
     this.internalServiceAuthFilter = internalServiceAuthFilter;
+    this.prometheusPublic = prometheusPublic;
   }
 
   @Bean
@@ -51,9 +57,14 @@ public class SecurityConfig {
         .cors(Customizer.withDefaults())
         .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
-            auth -> auth.requestMatchers(PUBLIC_ENDPOINTS).permitAll()
-                .requestMatchers(INTERNAL_SERVICE_ENDPOINTS).permitAll()
-                .anyRequest().authenticated())
+            auth -> {
+              auth.requestMatchers(PUBLIC_ENDPOINTS).permitAll()
+                  .requestMatchers(INTERNAL_SERVICE_ENDPOINTS).permitAll();
+              if (prometheusPublic) {
+                auth.requestMatchers("/actuator/prometheus").permitAll();
+              }
+              auth.anyRequest().authenticated();
+            })
         .addFilterBefore(internalServiceAuthFilter, UsernamePasswordAuthenticationFilter.class)
         .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
     return http.build();

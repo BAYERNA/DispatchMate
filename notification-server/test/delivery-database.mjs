@@ -65,6 +65,12 @@ try {
   await db.exec(await readFile(new URL('V19__facility_profiles_and_training_sessions_isolation.sql', migrations), 'utf8'));
   await db.exec(await readFile(new URL('V20__super_admin_organization_onboarding.sql', migrations), 'utf8'));
   await db.exec(await readFile(new URL('V21__retention_execution_plans_per_organization.sql', migrations), 'utf8'));
+  await db.exec(await readFile(new URL('V22__fire_risk_regions.sql', migrations), 'utf8'));
+  await db.exec(await readFile(new URL('V23__no_fly_zones.sql', migrations), 'utf8'));
+  await db.exec(await readFile(new URL('V24__incident_drone_dispatch_skip_reason.sql', migrations), 'utf8'));
+  await db.exec(await readFile(new URL('V25__drone_dispatches_one_per_incident.sql', migrations), 'utf8'));
+  await db.exec(await readFile(new URL('V26__communication_health_monitoring.sql', migrations), 'utf8'));
+  await db.exec(await readFile(new URL('V27__command_receipts_and_communication_recovery.sql', migrations), 'utf8'));
   await rows('UPDATE users SET organization_id=$1', [DEFAULT_ORG]);
   await rows('UPDATE incidents SET organization_id=$1', [DEFAULT_ORG]);
   // OrganizationScopeService는 실제로는 TypeORM Repository.findOne()을 쓰지만, 이 스크립트는

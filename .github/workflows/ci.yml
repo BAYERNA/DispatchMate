@@ -16,6 +16,65 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  data-platform:
+    name: data platform (dbt / S3 exporter)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: faind
+          POSTGRES_USER: faind
+          POSTGRES_PASSWORD: ${{ format('ci-db-{0}-{1}', github.run_id, github.run_attempt) }}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U faind -d faind"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            analytics/requirements.txt
+            data-pipeline/requirements.txt
+      - run: pip install -r data-pipeline/requirements.txt
+      - name: 운영 스키마 마이그레이션
+        run: |
+          for migration in $(find backend/src/main/resources/db/migration -name '*.sql' | sort -V); do
+            psql -v ON_ERROR_STOP=1 -f "$migration"
+          done
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGDATABASE: faind
+          PGUSER: faind
+          PGPASSWORD: ${{ format('ci-db-{0}-{1}', github.run_id, github.run_attempt) }}
+      - name: dbt 모델 생성·데이터 품질 검사
+        run: |
+          cp analytics/profiles.example.yml analytics/profiles.yml
+          dbt build --project-dir analytics --profiles-dir analytics
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: faind
+          DB_USERNAME: faind
+          DB_PASSWORD: ${{ format('ci-db-{0}-{1}', github.run_id, github.run_attempt) }}
+      - name: S3 내보내기 단위 테스트
+        run: python -m unittest discover -s data-pipeline/tests -v
+        env:
+          PYTHONPATH: data-pipeline
+      - name: 데이터 파이프라인 이미지 빌드
+        run: docker build -f data-pipeline/Dockerfile -t dispatchmate-data-exporter:test .
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.9.8'
+      - name: AWS Terraform 검증
+        run: |
+          terraform -chdir=infra/aws init -backend=false
+          terraform -chdir=infra/aws validate
+
   backend:
     name: backend (Java 21 / Gradle)
     runs-on: ubuntu-latest
@@ -162,7 +221,7 @@ jobs:
         env:
           POSTGRES_DB: faind
           POSTGRES_USER: faind
-          POSTGRES_PASSWORD: faind
+          POSTGRES_PASSWORD: ${{ format('ci-db-{0}-{1}', github.run_id, github.run_attempt) }}
         ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U faind -d faind"
@@ -174,7 +233,9 @@ jobs:
           --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      JWT_SECRET: e2e-ci-secret-key-not-for-production-0123456789
+      JWT_SECRET: ${{ format('ci-jwt-{0}-{1}-ephemeral-only', github.run_id, github.run_attempt) }}
+      DB_PASSWORD: ${{ format('ci-db-{0}-{1}', github.run_id, github.run_attempt) }}
+      E2E_TEST_PASSWORD: ${{ format('E2E-{0}-{1}-Aa!', github.run_id, github.run_attempt) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -208,7 +269,7 @@ jobs:
         env:
           DB_URL: jdbc:postgresql://localhost:5432/faind
           DB_USERNAME: faind
-          DB_PASSWORD: faind
+          DB_PASSWORD: ${{ format('ci-db-{0}-{1}', github.run_id, github.run_attempt) }}
           REDIS_HOST: localhost
           REDIS_PORT: 6379
 
@@ -226,7 +287,7 @@ jobs:
         env:
           DB_HOST: localhost
           DB_USERNAME: faind
-          DB_PASSWORD: faind
+          DB_PASSWORD: ${{ format('ci-db-{0}-{1}', github.run_id, github.run_attempt) }}
           DB_NAME: faind
 
       # 세 앱 모두 scripts/seed-e2e-accounts.sql(psql)·레이트리미팅 카운터 초기화(redis-cli)를
@@ -263,10 +324,11 @@ jobs:
   docker-smoke-test:
     name: Docker Compose 스모크 테스트
     env:
-      POSTGRES_PASSWORD: ci-only-postgres-password-not-for-production
-      JWT_SECRET: ci-only-jwt-secret-not-for-production
-      INTERNAL_WEBHOOK_TOKEN: ci-only-webhook-token-not-for-production
-      INTERNAL_SERVICE_TOKEN: ci-only-callback-token-not-for-production
+      POSTGRES_PASSWORD: ${{ format('ci-db-{0}-{1}', github.run_id, github.run_attempt) }}
+      JWT_SECRET: ${{ format('ci-jwt-{0}-{1}-ephemeral-only', github.run_id, github.run_attempt) }}
+      INTERNAL_WEBHOOK_TOKEN: ${{ format('ci-webhook-{0}-{1}', github.run_id, github.run_attempt) }}
+      INTERNAL_SERVICE_TOKEN: ${{ format('ci-service-{0}-{1}', github.run_id, github.run_attempt) }}
+      E2E_TEST_PASSWORD: ${{ format('E2E-{0}-{1}-Aa!', github.run_id, github.run_attempt) }}
     runs-on: ubuntu-latest
     # 위의 e2e job은 backend/notification-server를 raw 프로세스로, 3개 프론트엔드는 vite dev
     # server로 띄워서 검증한다 — docker-compose.yml/각 앱의 Dockerfile·nginx.conf는 그 어떤 job도
@@ -287,15 +349,16 @@ jobs:
           echo "backend가 기동하지 못했다"; docker compose logs backend; exit 1
       # scripts/seed-e2e-accounts.sql은 e2e job의 global-setup.ts가 쓰는 것과 동일한 파일이다.
       - name: E2E 계정 시드
-        run: docker compose exec -T postgres psql -U faind -d faind < scripts/seed-e2e-accounts.sql
+        run: docker compose exec -T postgres psql -U faind -d faind -v e2e_password="$E2E_TEST_PASSWORD" < scripts/seed-e2e-accounts.sql
       - name: 각 프론트엔드 nginx 오리진 경유 로그인 스모크 테스트 (CORS/프록시 설정 검증)
         run: |
           declare -A PORTS=( [admin-web]=8081 [commander-tablet]=8082 [responder-app]=8083 )
           for name in "${!PORTS[@]}"; do
             port=${PORTS[$name]}
+            payload=$(jq -nc --arg password "$E2E_TEST_PASSWORD" '{organizationCode:"DEFAULT",badgeNumber:"E2E-ADMIN",password:$password}')
             code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:$port/api/v1/auth/login" \
               -H "Content-Type: application/json" -H "Origin: http://localhost:$port" \
-              -d '{"organizationCode":"DEFAULT","badgeNumber":"E2E-ADMIN","password":"Test1234!"}')
+              -d "$payload")
             echo "$name (:$port) 로그인 → HTTP $code"
             if [ "$code" != "200" ]; then
               echo "실패 — nginx 프록시/CORS 설정을 확인하라"

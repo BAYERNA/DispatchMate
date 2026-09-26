@@ -26,7 +26,7 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
     try {
       lease = await this.acquireLease();
       if (!lease) return;
-      await this.safety(); await this.expirePar(); await this.repeatMaydays();
+      await this.safety(); await this.communicationSafety(); await this.commandAcknowledgementSafety(); await this.expirePar(); await this.repeatMaydays();
       await this.channels(); await this.processJobs(); await this.captureDrift(); await this.measureSlo();
     } catch (error) { this.logger.error('운영 자동화 점검 실패', error); }
     finally { if (lease) await this.releaseLease(lease.fencingToken).catch(error => this.logger.warn(`리스 해제 실패: ${error}`)); this.running = false; }
@@ -53,6 +53,30 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
         await this.alerts.createFromSystem({ incidentId: row.incidentId, alertType: 'RISK_WARNING', message: `[자동 안전 경보] ${rule.message}`, sourceType: 'SENSOR', targetUserId: row.userId, automationKey: key });
         await this.db.query(`INSERT INTO safety_alert_state(incident_id,user_id,rule_code,last_source_at) VALUES($1,$2,$3,$4) ON CONFLICT(incident_id,user_id,rule_code) DO UPDATE SET last_source_at=EXCLUDED.last_source_at,last_alerted_at=now()`, [row.incidentId, row.userId, rule.code, row.recordedAt]);
       }
+    }
+  }
+
+  async communicationSafety() {
+    const rows = await this.db.query(`SELECT a.incident_id AS "incidentId",a.user_id AS "userId",a.assigned_at AS "assignedAt",i.commander_id AS "commanderId",MAX(h.last_heartbeat_at) AS "lastHeartbeatAt"
+      FROM incident_assignments a JOIN incidents i ON i.incident_id=a.incident_id JOIN users u ON u.user_id=a.user_id
+      LEFT JOIN incident_communication_heartbeats h ON h.incident_id=a.incident_id AND h.user_id=a.user_id
+      WHERE i.status<>'CLOSED' AND u.role='RESPONDER' AND u.status='ACTIVE'
+      GROUP BY a.incident_id,a.user_id,a.assigned_at,i.commander_id HAVING (MAX(h.last_heartbeat_at) IS NULL AND a.assigned_at<now()-interval '45 seconds') OR MAX(h.last_heartbeat_at)<now()-interval '45 seconds'`);
+    for (const row of rows) {
+      const sourceAt = new Date(row.lastHeartbeatAt??row.assignedAt).toISOString();
+      const neverReported = !row.lastHeartbeatAt;
+      await this.alerts.createFromSystem({ incidentId: row.incidentId, alertType: 'RISK_WARNING', message: neverReported?'[통신 미연결] 배정 후 heartbeat가 수신되지 않음':'[통신 단절] 대원 heartbeat 45초 이상 미수신', sourceType: 'SENSOR', targetUserId: row.commanderId??row.userId, automationKey: `${neverReported?'communication-never':'communication-stale'}:${row.incidentId}:${row.userId}:${sourceAt}` });
+      await this.db.query(`INSERT INTO safety_alert_state(incident_id,user_id,rule_code,last_source_at,resolved_at) VALUES($1,$2,'COMMUNICATION_HEARTBEAT_STALE',$3,NULL) ON CONFLICT(incident_id,user_id,rule_code) DO UPDATE SET last_source_at=EXCLUDED.last_source_at,last_alerted_at=now(),resolved_at=NULL`, [row.incidentId,row.userId,row.lastHeartbeatAt??row.assignedAt]);
+    }
+  }
+
+  async commandAcknowledgementSafety() {
+    const rows=await this.db.query(`SELECT r.command_id AS "commandId",r.user_id AS "userId",c.incident_id AS "incidentId",c.issued_by AS "issuedBy",c.title,u.name AS "userName"
+      FROM incident_command_receipts r JOIN incident_commands c ON c.command_id=r.command_id JOIN incidents i ON i.incident_id=c.incident_id JOIN users u ON u.user_id=r.user_id
+      WHERE i.status<>'CLOSED' AND c.status='OPEN' AND r.status IN ('PENDING','RECEIVED','READ') AND c.acknowledgement_due_at<=now() AND r.escalated_at IS NULL`);
+    for(const row of rows){
+      await this.alerts.createFromSystem({incidentId:row.incidentId,alertType:'RISK_WARNING',message:`[명령 미응답] ${row.userName} · ${row.title}`,sourceType:'SENSOR',targetUserId:row.issuedBy,automationKey:`command-unacknowledged:${row.commandId}:${row.userId}`});
+      await this.db.query(`UPDATE incident_command_receipts SET escalated_at=now(),updated_at=now() WHERE command_id=$1 AND user_id=$2 AND escalated_at IS NULL`,[row.commandId,row.userId]);
     }
   }
 

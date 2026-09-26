@@ -5,6 +5,7 @@ export class MissionController{constructor(private readonly mission:MissionServi
  @Get('incidents/:incidentId/mission-control') @UseGuards(IncidentAccessGuard) control(@Param('incidentId',new ParseUUIDPipe())id:string,@CurrentUser()u:AuthenticatedUser){return this.mission.control(id,u)}
  @Post('incidents/:incidentId/commands') @UseGuards(IncidentAccessGuard) command(@Param('incidentId',new ParseUUIDPipe())id:string,@CurrentUser()u:AuthenticatedUser,@Body()b:any){return this.mission.createCommand(id,u,b)}
  @Patch('commands/:id/status') commandStatus(@Param('id',new ParseUUIDPipe())id:string,@CurrentUser()u:AuthenticatedUser,@Body()b:any){return this.mission.commandStatus(id,u,b.status)}
+ @Patch('commands/:id/receipt') commandReceipt(@Param('id',new ParseUUIDPipe())id:string,@CurrentUser()u:AuthenticatedUser,@Body()b:any){return this.mission.commandReceipt(id,u,b.status)}
  @Patch('sop-items/:id/status') sop(@Param('id',new ParseUUIDPipe())id:string,@CurrentUser()u:AuthenticatedUser,@Body()b:any){return this.mission.sopStatus(id,u,b.status,b.note)}
  @Post('incidents/:incidentId/resource-requests') @UseGuards(IncidentAccessGuard) resource(@Param('incidentId',new ParseUUIDPipe())id:string,@CurrentUser()u:AuthenticatedUser,@Body()b:any){return this.mission.requestResource(id,u,b)}
  @Patch('resource-requests/:id/status') resourceStatus(@Param('id',new ParseUUIDPipe())id:string,@CurrentUser()u:AuthenticatedUser,@Body()b:any){return this.mission.resourceStatus(id,u,b.status)}

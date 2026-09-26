@@ -1,0 +1,14 @@
+{
+  "name": "fire-smoke-validation",
+  "version": "2026.09.1",
+  "license": "CC BY 4.0",
+  "source": "Record the exact dataset URL and revision here",
+  "yoloDataYaml": "data.yaml",
+  "files": [
+    {
+      "path": "images/test/example.jpg",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "split": "test"
+    }
+  ]
+}

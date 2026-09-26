@@ -1,0 +1,74 @@
+version: 2
+
+sources:
+  - name: operational
+    description: Flyway가 소유하는 DispatchMate 운영 스키마. dbt는 이 테이블을 수정하지 않는다.
+    schema: public
+    tables:
+      - name: incidents
+        description: 출동 원장
+        columns:
+          - name: incident_id
+            tests: [not_null, unique]
+          - name: incident_number
+            tests: [not_null, unique]
+          - name: status
+            tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: [AI_SUSPECTED, DISPATCHED, IN_PROGRESS, CLOSED]
+          - name: reported_at
+            tests: [not_null]
+      - name: incident_assignments
+        columns:
+          - name: assignment_id
+            tests: [not_null, unique]
+          - name: incident_id
+            tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('operational', 'incidents')
+                    field: incident_id
+      - name: responder_status_logs
+        columns:
+          - name: log_id
+            tests: [not_null, unique]
+          - name: incident_id
+            tests:
+              - relationships:
+                  arguments:
+                    to: source('operational', 'incidents')
+                    field: incident_id
+          - name: risk_level
+            tests:
+              - accepted_values:
+                  arguments:
+                    values: [NORMAL, CAUTION, DANGER]
+                  config:
+                    where: "risk_level is not null"
+      - name: alerts
+        columns:
+          - name: alert_id
+            tests: [not_null, unique]
+          - name: incident_id
+            tests:
+              - relationships:
+                  arguments:
+                    to: source('operational', 'incidents')
+                    field: incident_id
+      - name: alert_acknowledgements
+        columns:
+          - name: ack_id
+            tests: [not_null, unique]
+          - name: alert_id
+            tests:
+              - relationships:
+                  arguments:
+                    to: source('operational', 'alerts')
+                    field: alert_id
+      - name: ai_judgment_logs
+        columns:
+          - name: judgment_id
+            tests: [not_null, unique]

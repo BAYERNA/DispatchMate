@@ -37,7 +37,7 @@ export class AdvancedOperationsService {
 
   async dashboard(incidentId: string, user: AuthenticatedUser) {
     await this.permission(incidentId, user, 'PAR_RESPOND');
-    const [signals, par, routes, positions, zones, objectives, hospitals, handovers, twinRuns] = await Promise.all([
+    const [signals, par, routes, positions, zones, objectives, hospitals, handovers, twinRuns, communications] = await Promise.all([
       this.db.query(`SELECT e.signal_id AS "signalId",e.user_id AS "userId",u.name AS "userName",e.signal_type AS "signalType",e.status,e.trigger_source AS "triggerSource",e.location,e.vitals,e.last_communication_at AS "lastCommunicationAt",e.activated_at AS "activatedAt" FROM emergency_signals e JOIN users u ON u.user_id=e.user_id WHERE e.incident_id=$1 ORDER BY e.activated_at DESC LIMIT 100`, [incidentId]),
       this.db.query(`SELECT s.session_id AS "sessionId",s.status,s.deadline_at AS "deadlineAt",s.team_label AS "teamLabel",COUNT(a.user_id)::int AS "expectedCount",COUNT(r.user_id)::int AS "responseCount",COALESCE(jsonb_agg(jsonb_build_object('userId',r.user_id,'response',r.response,'respondedAt',r.responded_at)) FILTER(WHERE r.user_id IS NOT NULL),'[]'::jsonb) AS responses FROM accountability_sessions s LEFT JOIN incident_assignments a ON a.incident_id=s.incident_id LEFT JOIN accountability_responses r ON r.session_id=s.session_id AND r.user_id=a.user_id WHERE s.incident_id=$1 GROUP BY s.session_id ORDER BY s.created_at DESC LIMIT 20`, [incidentId]),
       this.db.query(`SELECT route_id AS "routeId",route_type AS "routeType",title,origin,destination,waypoints,hazards,distance_m AS "distanceM",eta_seconds AS "etaSeconds",status FROM operational_routes WHERE incident_id=$1 ORDER BY created_at DESC`, [incidentId]),
@@ -47,9 +47,21 @@ export class AdvancedOperationsService {
       this.db.query(`SELECT hospital_id AS "hospitalId",name,emergency_status AS "emergencyStatus",available_beds AS "availableBeds",specialties,updated_at AS "updatedAt" FROM hospital_capacities ORDER BY name`, []),
       this.db.query(`SELECT h.handover_id AS "handoverId",h.patient_ref AS "patientRef",h.triage_level AS "triageLevel",h.summary,h.status,c.name AS "hospitalName" FROM patient_handovers h LEFT JOIN hospital_capacities c ON c.hospital_id=h.hospital_id WHERE h.incident_id=$1 ORDER BY h.created_at DESC`, [incidentId]),
       this.db.query(`SELECT run_id AS "runId",scenario,result,disclaimer,created_at AS "createdAt" FROM digital_twin_runs WHERE incident_id=$1 ORDER BY created_at DESC LIMIT 10`, [incidentId]),
+      this.db.query(`WITH latest AS (
+        SELECT DISTINCT ON(user_id) user_id,client_id,reported_state,stable_state,transport,rssi_dbm,downlink_mbps,rtt_ms,socket_connected,client_online,last_transition_at,last_heartbeat_at
+        FROM incident_communication_heartbeats WHERE incident_id=$1 ORDER BY user_id,last_heartbeat_at DESC
+      )
+      SELECT a.user_id AS "userId",u.name AS "userName",l.client_id AS "clientId",l.transport,l.rssi_dbm AS "rssiDbm",
+        l.downlink_mbps AS "downlinkMbps",l.rtt_ms AS "rttMs",l.socket_connected AS "socketConnected",l.client_online AS "clientOnline",
+        l.last_transition_at AS "lastTransitionAt",l.last_heartbeat_at AS "lastHeartbeatAt",
+        CASE WHEN l.last_heartbeat_at IS NULL OR l.last_heartbeat_at<now()-interval '45 seconds' THEN 'OFFLINE'
+             ELSE l.stable_state END AS "effectiveState",
+        CASE WHEN l.last_heartbeat_at IS NULL THEN NULL ELSE EXTRACT(EPOCH FROM(now()-l.last_heartbeat_at))::int END AS "secondsSinceHeartbeat"
+      FROM incident_assignments a JOIN users u ON u.user_id=a.user_id AND u.status='ACTIVE'
+      LEFT JOIN latest l ON l.user_id=a.user_id WHERE a.incident_id=$1 AND u.role='RESPONDER' ORDER BY u.name`, [incidentId]),
     ]);
-    if (user.role === 'RESPONDER') return { signals: signals.filter((x: any) => x.userId === user.userId || x.status === 'ACTIVE'), par, routes, positions, zones, objectives, hospitals, handovers: [], twinRuns: [] };
-    return { signals, par, routes, positions, zones, objectives, hospitals, handovers, twinRuns };
+    if (user.role === 'RESPONDER') return { signals: signals.filter((x: any) => x.userId === user.userId || x.status === 'ACTIVE'), par, routes, positions, zones, objectives, hospitals, handovers: [], twinRuns: [], communications: communications.filter((x: any) => x.userId === user.userId) };
+    return { signals, par, routes, positions, zones, objectives, hospitals, handovers, twinRuns, communications };
   }
 
   async mayday(incidentId: string, user: AuthenticatedUser, body: any) {
@@ -114,6 +126,43 @@ export class AdvancedOperationsService {
     await this.permission(incidentId, user, 'POSITION_REPORT');
     if (!['GPS', 'BLE', 'UWB', 'MANUAL'].includes(body.source)) throw new BadRequestException();
     return (await this.db.query(`INSERT INTO indoor_position_updates(incident_id,user_id,floor_id,source,x_percent,y_percent,latitude,longitude,accuracy_m) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING position_id AS "positionId",recorded_at AS "recordedAt"`, [incidentId, user.userId, body.floorId || null, body.source, body.xPercent ?? null, body.yPercent ?? null, body.latitude ?? null, body.longitude ?? null, body.accuracyM ?? null]))[0];
+  }
+
+  async communicationHeartbeat(incidentId: string, user: AuthenticatedUser, body: any) {
+    await this.permission(incidentId, user, 'PAR_RESPOND');
+    const states = ['CONNECTED', 'DEGRADED', 'OFFLINE', 'RECOVERING'];
+    const transports = ['WIFI', 'CELLULAR', 'MESH', 'SMS', 'UNKNOWN'];
+    if (!states.includes(body.state) || !transports.includes(body.transport ?? 'UNKNOWN')) throw new BadRequestException('통신 상태 또는 전송 방식을 확인하세요.');
+    if (typeof body.clientId !== 'string' || !/^[A-Za-z0-9._:-]{8,120}$/.test(body.clientId)) throw new BadRequestException('통신 클라이언트 ID를 확인하세요.');
+    const rssi = body.rssiDbm == null ? null : Number(body.rssiDbm);
+    const downlink = body.downlinkMbps == null ? null : Number(body.downlinkMbps);
+    const rtt = body.rttMs == null ? null : Number(body.rttMs);
+    if (rssi != null && (!Number.isInteger(rssi) || rssi < -140 || rssi > 0)) throw new BadRequestException('RSSI 범위는 -140~0dBm입니다.');
+    if (downlink != null && (!Number.isFinite(downlink) || downlink < 0 || downlink > 10000)) throw new BadRequestException('다운링크 값을 확인하세요.');
+    if (rtt != null && (!Number.isInteger(rtt) || rtt < 0 || rtt > 60000)) throw new BadRequestException('RTT 값을 확인하세요.');
+    const previous = (await this.db.query(`SELECT reported_state AS "reportedState",stable_state AS "stableState",consecutive_healthy AS "consecutiveHealthy",consecutive_unhealthy AS "consecutiveUnhealthy",last_heartbeat_at AS "lastHeartbeatAt" FROM incident_communication_heartbeats WHERE incident_id=$1 AND user_id=$2 AND client_id=$3`, [incidentId,user.userId,body.clientId]))[0];
+    const observedConnected=body.state==='CONNECTED'&&body.socketConnected!==false&&body.clientOnline!==false&&(rssi==null||rssi>-90);
+    const observedState=body.state==='OFFLINE'?'OFFLINE':observedConnected?'CONNECTED':'DEGRADED';
+    const wasStale=previous&&Date.now()-new Date(previous.lastHeartbeatAt).getTime()>45_000;
+    const healthy=observedConnected?Number(previous?.consecutiveHealthy??0)+1:0;
+    const unhealthy=observedConnected?0:Number(previous?.consecutiveUnhealthy??0)+1;
+    let stableState=observedState;
+    if(previous&&observedConnected&&(wasStale||(['DEGRADED','OFFLINE','RECOVERING'].includes(previous.stableState)&&healthy<2)))stableState='RECOVERING';
+    else if(previous&&!observedConnected&&observedState!=='OFFLINE'&&unhealthy<2)stableState=previous.stableState;
+    const row = (await this.db.query(`INSERT INTO incident_communication_heartbeats(incident_id,user_id,client_id,reported_state,stable_state,consecutive_healthy,consecutive_unhealthy,transport,rssi_dbm,downlink_mbps,rtt_ms,socket_connected,client_online,diagnostics)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb)
+      ON CONFLICT(incident_id,user_id,client_id) DO UPDATE SET reported_state=EXCLUDED.reported_state,transport=EXCLUDED.transport,rssi_dbm=EXCLUDED.rssi_dbm,
+        downlink_mbps=EXCLUDED.downlink_mbps,rtt_ms=EXCLUDED.rtt_ms,socket_connected=EXCLUDED.socket_connected,client_online=EXCLUDED.client_online,
+        diagnostics=EXCLUDED.diagnostics,stable_state=EXCLUDED.stable_state,consecutive_healthy=EXCLUDED.consecutive_healthy,consecutive_unhealthy=EXCLUDED.consecutive_unhealthy,
+        last_transition_at=CASE WHEN incident_communication_heartbeats.stable_state IS DISTINCT FROM EXCLUDED.stable_state THEN now() ELSE incident_communication_heartbeats.last_transition_at END,
+        last_heartbeat_at=now()
+      RETURNING reported_state AS "reportedState",stable_state AS "stableState",transport,last_heartbeat_at AS "lastHeartbeatAt"`, [incidentId,user.userId,body.clientId,body.state,stableState,healthy,unhealthy,body.transport??'UNKNOWN',rssi,downlink,rtt,Boolean(body.socketConnected),body.clientOnline!==false,JSON.stringify(body.diagnostics??{})]))[0];
+    if (!previous || previous.stableState !== stableState) await this.db.query(`INSERT INTO incident_events(incident_id,event_type,actor_user_id,source_ref,summary,details) VALUES($1,'COMMUNICATION_STATE',$2,$3,$4,$5::jsonb)`, [incidentId,user.userId,body.clientId,`통신 상태 ${previous?.stableState??'UNKNOWN'} → ${stableState}`,JSON.stringify({transport:row.transport,rssiDbm:rssi,rttMs:rtt})]);
+    if(stableState==='CONNECTED'){
+      const resolved=await this.db.query(`UPDATE safety_alert_state SET resolved_at=now() WHERE incident_id=$1 AND user_id=$2 AND rule_code='COMMUNICATION_HEARTBEAT_STALE' AND resolved_at IS NULL RETURNING last_alerted_at AS "lastAlertedAt"`,[incidentId,user.userId]);
+      if(resolved.length){const incident=(await this.db.query(`SELECT commander_id AS "commanderId" FROM incidents WHERE incident_id=$1`,[incidentId]))[0];await this.alerts.createFromSystem({incidentId,alertType:'STATUS_CHANGE',message:'[통신 복구] 대원 heartbeat 정상 수신',sourceType:'SENSOR',targetUserId:incident?.commanderId??null,automationKey:`communication-recovered:${incidentId}:${user.userId}:${new Date(resolved[0].lastAlertedAt).toISOString()}`});}
+    }
+    return { ...row, effectiveState: stableState };
   }
 
   async addTag(user: AuthenticatedUser, body: any) {

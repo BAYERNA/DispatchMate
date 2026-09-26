@@ -5,6 +5,9 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { initSentry } from './monitoring/sentry'
 import './styles/global.css'
 import '@faind/design-system/components.css'
+import { initMonitoring } from './monitoring'
+
+initMonitoring()
 
 initSentry()
 

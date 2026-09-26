@@ -64,4 +64,8 @@ async def danger(device_id: UUID, authorization: str = Depends(require_operator)
 @router.get('/status')
 async def status(authorization: str = Depends(require_operator),
                  agent: FireDetectionAgent = Depends(get_fire_detection_agent)):
-    return {'service': 'UP', 'model': 'READY' if agent.yolo_service.is_available else 'UNAVAILABLE'}
+    return {
+        'service': 'UP',
+        'model': 'READY' if agent.yolo_service.is_available else 'UNAVAILABLE',
+        'backend': agent.yolo_service.backend,
+    }

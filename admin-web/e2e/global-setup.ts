@@ -6,6 +6,8 @@ import path from 'node:path'
 // 로그인 실패 테스트가 쌓아둔 레이트리미팅 카운터(Phase 10 보안 강화)를 지워 매 실행이
 // 이전 실행 상태에 좌우되지 않게 한다.
 export default async function globalSetup() {
+  const e2ePassword = process.env.E2E_TEST_PASSWORD
+  if (!e2ePassword) throw new Error('E2E_TEST_PASSWORD is required')
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
   const sqlPath = path.join(repoRoot, 'scripts', 'seed-e2e-accounts.sql')
 
@@ -21,6 +23,7 @@ export default async function globalSetup() {
       '-U', process.env.DB_USERNAME ?? 'faind',
       '-d', process.env.DB_NAME ?? 'faind',
       '-v', 'ON_ERROR_STOP=1',
+      '-v', `e2e_password=${e2ePassword}`,
       '-f', sqlPath,
     ],
     { env: pgEnv, stdio: 'inherit' },

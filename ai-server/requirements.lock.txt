@@ -6,6 +6,7 @@ asgiref==3.12.1
 certifi==2026.7.22
 charset-normalizer==3.5.1
 click==8.5.0
+coloredlogs==15.0.1
 contourpy==1.3.3
 cuda-bindings==13.3.1
 cuda-pathfinder==1.8.1
@@ -16,6 +17,7 @@ distro==1.9.0
 docstring_parser==0.18.0
 fastapi==0.115.6
 filelock==3.32.5
+flatbuffers==25.12.19
 fonttools==4.64.0
 fsspec==2026.7.0
 googleapis-common-protos==1.75.3
@@ -25,6 +27,7 @@ httpcore2==2.12.0
 httptools==0.8.0
 httpx==0.28.1
 httpx2==2.12.0
+humanfriendly==10.0
 idna==3.19
 Jinja2==3.1.6
 jiter==0.16.0
@@ -42,6 +45,7 @@ matplotlib==3.11.1
 mpmath==1.3.0
 networkx==3.6.1
 numpy==1.26.4
+onnxruntime==1.23.1
 nvidia-cublas==13.1.1.3
 nvidia-cuda-cupti==13.0.85
 nvidia-cuda-nvrtc==13.0.88

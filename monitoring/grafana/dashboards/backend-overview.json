@@ -1,0 +1,70 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Backend 상태",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "dispatchmate-prometheus" },
+      "targets": [{ "expr": "up{job=\"dispatchmate-backend\"}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "mappings": [{ "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }], "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } }
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP 요청률",
+      "gridPos": { "h": 8, "w": 9, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "dispatchmate-prometheus" },
+      "targets": [{ "expr": "sum(rate(http_server_requests_seconds_count[5m])) by (method, status)", "legendFormat": "{{method}} {{status}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP 응답시간 p95",
+      "gridPos": { "h": 8, "w": 9, "x": 15, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "dispatchmate-prometheus" },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket[5m])) by (le, uri))", "legendFormat": "{{uri}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM Heap 사용량",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "dispatchmate-prometheus" },
+      "targets": [{ "expr": "sum(jvm_memory_used_bytes{area=\"heap\"})", "legendFormat": "used", "refId": "A" }, { "expr": "sum(jvm_memory_max_bytes{area=\"heap\"})", "legendFormat": "max", "refId": "B" }],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "DB 커넥션 풀",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "dispatchmate-prometheus" },
+      "targets": [{ "expr": "hikaricp_connections_active", "legendFormat": "active", "refId": "A" }, { "expr": "hikaricp_connections_pending", "legendFormat": "pending", "refId": "B" }],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Circuit Breaker 상태",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "dispatchmate-prometheus" },
+      "targets": [{ "expr": "resilience4j_circuitbreaker_state", "legendFormat": "{{name}} {{state}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } }
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 41,
+  "tags": ["dispatchmate", "spring-boot"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timezone": "browser",
+  "title": "DispatchMate Backend Overview",
+  "uid": "dispatchmate-backend",
+  "version": 1
+}

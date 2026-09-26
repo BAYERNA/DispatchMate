@@ -5,12 +5,12 @@ import { z } from 'zod'
 // localStorage에서 복원하는 값도 같은 스키마로 검증한다 — 앱 스키마가 바뀐 뒤 남아있는
 // 구버전 저장값을 타입만 믿고 그대로 쓰지 않기 위함.
 export const authUserSchema = z.object({
-  userId: z.string(),
-  name: z.string(),
+  userId: z.string().uuid(),
+  name: z.string().min(1),
   role: z.enum(['ADMIN', 'COMMANDER', 'RESPONDER']),
   initialPassword: z.boolean(),
 })
 
 export const loginResponseSchema = authUserSchema.extend({
-  accessToken: z.string(),
+  accessToken: z.string().min(1),
 })
