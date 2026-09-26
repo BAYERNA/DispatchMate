@@ -57,7 +57,7 @@ class InfrastructureIntegrationTest {
             String.class);
 
     assertThat(failed).isZero();
-    assertThat(latestVersion).isEqualTo("17");
+    assertThat(latestVersion).isEqualTo("27");
   }
 
   @Test
