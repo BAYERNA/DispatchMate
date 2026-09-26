@@ -133,8 +133,10 @@ Compose는 루트 `.env`의 `INTERNAL_SERVICE_TOKEN`을 양쪽 변수로 전달�
 - `scripts/check_model_regression.py`는 승인된 기준 대비 허용 범위를 넘는 성능 저하를 배포 전에 차단합니다.
 - `scripts/export_onnx.py`와 `scripts/benchmark_inference.py`로 PyTorch·ONNX 추론시간을 비교할 수 있습니다.
 - `FAIND_YOLO_BACKEND=onnx`이면 `FAIND_YOLO_ONNX_MODEL_PATH`의 모델을 ONNX Runtime으로 실행합니다.
-- Flyway V17은 384차원 pgvector SOP 지식 저장소를 생성합니다. 관리자·지휘관만 SOP 문서를 등록·검색할 수 있고,
-  보고서 대조 응답에는 문서 ID·버전·출처·유사도가 근거로 포함됩니다. DB 장애나 문서 미등록 시 기존 고정 체크리스트로 폴백합니다.
+- Flyway V16은 128차원 pgvector SOP 검색 테이블을 생성합니다. Java backend가 결정론적 임베딩과
+  조직 범위가 적용된 내부 검색 API를 제공하고, AI 서버는 검색 장애 시 기존 고정 체크리스트로
+  안전하게 대체합니다. 실제 SOP 검증셋으로 Recall@K를 측정한 뒤 승인된 한국어 임베딩 모델로
+  교체할 수 있도록 검색 경계를 분리했습니다.
 
 ```bash
 # 실험 추적 서버
