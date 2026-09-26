@@ -234,6 +234,7 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       JWT_SECRET: ${{ format('ci-jwt-{0}-{1}-ephemeral-only', github.run_id, github.run_attempt) }}
+      DB_PASSWORD: ${{ format('ci-db-{0}-{1}', github.run_id, github.run_attempt) }}
       E2E_TEST_PASSWORD: ${{ format('E2E-{0}-{1}-Aa!', github.run_id, github.run_attempt) }}
     steps:
       - uses: actions/checkout@v4
