@@ -52,7 +52,7 @@ export default function App() {
             <Route
               path="/initial-password"
               element={
-                <RequireAuth>
+                <RequireAuth allowedRoles={['SUPER_ADMIN', 'ADMIN', 'COMMANDER', 'RESPONDER']}>
                   <SetInitialPasswordPage />
                 </RequireAuth>
               }
